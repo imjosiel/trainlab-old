@@ -1,0 +1,15 @@
+{
+  "name": "@trainlab/papeis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Regras de papeis (roles) compartilhadas entre apps/web e apps/backend. Pacote puro: sem Prisma, Nest ou Next.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build"
+  }
+}
