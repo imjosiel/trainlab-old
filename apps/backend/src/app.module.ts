@@ -1,0 +1,43 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+
+import { ErrorContractFilter } from '@/common/error-contract.filter';
+
+import { MeController } from '@/auth/me.controller';
+import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
+import { RolesGuard } from '@/auth/roles.guard';
+import { HealthController } from '@/health/health.controller';
+import { NotificationsModule } from '@/notifications/notifications.module';
+import { PrismaModule } from '@/prisma/prisma.module';
+import { SportsModule } from '@/sports/sports.module';
+import { UsersModule } from '@/users/users.module';
+
+@Module({
+  imports: [
+    // O Nest não carrega .env por conta própria — sem isto o guard não encontra
+    // NEXTAUTH_SECRET e nega toda requisição pelo ramo fail-closed. Popula
+    // process.env, que é de onde o guard lê.
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    SportsModule,
+    NotificationsModule,
+    UsersModule,
+  ],
+  controllers: [HealthController, MeController],
+  providers: [
+    // APP_GUARD é o ponto inteiro da fatia 1: roda antes de todo handler,
+    // incluindo os que ainda não foram escritos. Rota nova nasce protegida.
+    //
+    // A ORDEM IMPORTA e é a garantia do D11: auth primeiro (dono do 401),
+    // roles depois (dono do 403). Invertida, uma rota de admin acessada sem
+    // sessão responderia 403 em vez de 401.
+    { provide: APP_GUARD, useClass: NextAuthJwtGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    // Mesmo espírito do guard global: o contrato `{ error }` deixa de depender
+    // de cada lugar que lança se lembrar dele, e passa a valer para todo erro —
+    // inclusive os que nascem fora do nosso código, como o 404 do router.
+    { provide: APP_FILTER, useClass: ErrorContractFilter },
+  ],
+})
+export class AppModule {}
