@@ -1,0 +1,111 @@
+name: Tests
+
+# Este repositório contém a PLATAFORMA NOVA: o backend NestJS e os pacotes
+# compartilhados. O monolito Next permanece no repositório de origem, então não há
+# job de Playwright nem testes de frontend aqui.
+#
+# O workflow anterior era anterior ao monorepo e apontava tudo para a raiz
+# (`npm test`, `npm start`, `npx next build`, `npx prisma generate`) — nenhum
+# desses caminhos existe. E o gatilho era `main, dev` com o repositório em
+# `master`: a CI não rodava nem para falhar. Resultado medido: os 359 testes do
+# backend nunca foram executados na CI.
+
+on:
+  push:
+    branches: [master, main, develop, dev]
+  pull_request:
+    branches: [master, main, develop, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Typecheck e testes que não precisam de banco ───────────────────────────
+  unit:
+    name: Typecheck e testes unitários
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # `--ignore-scripts` é postura de segurança deliberada: nenhuma dependência
+      # executa script de instalação. O preço é que o que dependia de
+      # `postinstall`/`prepare` passa a ser EXPLÍCITO nos passos abaixo.
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts
+
+      # Sem isto o `@trainlab/papeis` não tem `dist/` e o backend falha ao
+      # importar — o `prepare` do pacote resolveria, mas está desligado acima.
+      - name: Construir pacotes compartilhados
+        run: npm run build:packages
+
+      # `postinstall` desligado: o client do Prisma precisa ser gerado à mão.
+      - name: Gerar client do Prisma
+        run: npm run prisma:generate
+
+      - name: Typecheck e testes unitários
+        run: npm run test:unit
+
+  # ── e2e contra Postgres real ───────────────────────────────────────────────
+  # 151 testes que exercitam guard, filtro de erro, posse e paginação com banco
+  # de verdade. Nunca estiveram na CI.
+  e2e:
+    name: E2E do backend (Postgres real)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: trainlab_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://e2e:e2e@localhost:5432/trainlab_e2e
+      DIRECT_URL: postgresql://e2e:e2e@localhost:5432/trainlab_e2e
+      NEXTAUTH_SECRET: e2e-secret-ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts
+
+      - name: Construir pacotes compartilhados
+        run: npm run build:packages
+
+      - name: Gerar client do Prisma
+        run: npm run prisma:generate
+
+      # As migrations passaram a viver aqui: este serviço é o dono do banco.
+      # Antes ficavam em apps/web (D10), decisão que só fazia sentido enquanto o
+      # monolito era o dono do schema.
+      - name: Aplicar migrations
+        run: npm run prisma:migrate
+
+      - name: E2E do backend
+        run: npm run test:backend:e2e
