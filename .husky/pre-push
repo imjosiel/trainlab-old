@@ -1,0 +1,5 @@
+#!/bin/sh
+# Verifica TypeScript antes de fazer push — evita erros de build na Vercel
+echo "🔍 Verificando TypeScript..."
+npm run typecheck 2>&1 | grep -v "@prisma/client" | grep "error TS" && exit 1
+echo "✅ TypeScript OK"

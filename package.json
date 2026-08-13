@@ -1,0 +1,32 @@
+{
+  "name": "trainlab",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run start:dev --workspace=@trainlab/backend",
+    "build:packages": "npm run build --workspace=@trainlab/papeis",
+    "prebuild:backend": "npm run build:packages",
+    "build:backend": "npm run build --workspace=@trainlab/backend",
+    "pretest:backend": "npm run build:packages",
+    "test:backend": "npm test --workspace=@trainlab/backend",
+    "pretest:backend:e2e": "npm run build:packages",
+    "test:backend:e2e": "npm run test:e2e --workspace=@trainlab/backend",
+    "pretypecheck": "npm run build:packages",
+    "typecheck": "npm run typecheck --workspace=@trainlab/backend",
+    "prisma:generate": "npm run prisma:generate --workspace=@trainlab/backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=@trainlab/backend",
+    "pretest:unit": "npm run build:packages",
+    "test:unit": "npm run typecheck && npm run test:backend",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:reset": "docker-compose down -v && docker-compose up -d"
+  },
+  "overrides": {
+    "@types/react": "19.2.14",
+    "next": "16.2.1"
+  }
+}
