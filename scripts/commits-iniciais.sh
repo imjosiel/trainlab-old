@@ -69,7 +69,7 @@ printf 'arquivos a versionar: %s\n' "$TOTAL_ANTES"
 grupo "1 · fundação do repositório" \
   "chore: estrutura de monorepo, ignore reancorado e ferramental" \
   .gitignore .mailmap package.json package-lock.json docker-compose.yml \
-  README.md DEVELOPMENT.md .agent .husky
+  README.md DEVELOPMENT.md .agent
 
 # ── 2 ── Regra de papéis: os dois lados importam dela, então vem antes deles.
 grupo "2 · pacote de papéis" \
