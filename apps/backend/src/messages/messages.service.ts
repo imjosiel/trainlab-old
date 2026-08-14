@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '@/prisma/prisma.service';
-import { RealtimeService } from './realtime.service';
+import { RealtimeService } from '@/realtime/realtime.service';
 
 export interface ListConversationsQuery {
   cursor?: string;

@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 
 import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
-import { RealtimeService } from './realtime.service';
 
 @Module({
   controllers: [MessagesController],
-  providers: [MessagesService, RealtimeService],
+  // RealtimeService vem do RealtimeModule, que é @Global (D70).
+  providers: [MessagesService],
 })
 export class MessagesModule {}

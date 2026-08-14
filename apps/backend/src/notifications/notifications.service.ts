@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { parseLimit } from '@/common/pagination';
 import { PrismaService } from '@/prisma/prisma.service';
+import { RealtimeService } from '@/realtime/realtime.service';
 
 export interface ListNotificationsQuery {
   cursor?: string;
@@ -13,7 +14,12 @@ const MAX_LIMIT = 50;
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(NotificationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(userId: string, query: ListNotificationsQuery) {
     const limit = parseLimit(query.limit, DEFAULT_LIMIT, MAX_LIMIT);
@@ -49,6 +55,56 @@ export class NotificationsService {
         : null;
 
     return { notifications, unreadCount, nextCursor };
+  }
+
+  /**
+   * ESQUELETO — fatia 13, passo vermelho (D70).
+   *
+   * Grava a notificação **e** emite o push, explicitamente.
+   *
+   * No monolito isso é implícito: `apps/web/lib/prisma.ts` tem um `$extends` que
+   * intercepta `notification.create` e dispara Pusher sozinho. O `PrismaService`
+   * do Nest não tem essa extensão, então o primeiro recurso migrado que CRIA
+   * notificação — agendamentos — gravaria a linha e o sino não receberia nada,
+   * em silêncio total (o `trigger` do legado engole erro com `.catch(() => {})`).
+   *
+   * Replicar o `$extends` aqui foi descartado: quem lê `notification.create` não
+   * tem como saber que aquilo manda um WebSocket, e desfazer esse tipo de
+   * acoplamento implícito é o motivo desta reescrita existir.
+   */
+  async criar(entrada: {
+    userId: string;
+    type: string;
+    title: string;
+    message: string;
+    link?: string | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ id: string } | null> {
+    const { userId, type, title, message, link = null, metadata } = entrada;
+
+    if (!userId || !type || !title || !message) {
+      this.logger.warn(`Notificação sem campo obrigatório — ignorada (userId=${userId}, type=${type})`);
+      return null;
+    }
+
+    const notif = await this.prisma.notification.create({
+      data: { userId, type, title, message, link, metadata: metadata as never },
+    });
+
+    // Entrega fora do caminho da resposta, mesma regra do D62: a notificação já
+    // está gravada, e derrubar a operação de domínio porque o WebSocket falhou
+    // trocaria uma perda de latência por uma perda de escrita.
+    try {
+      await this.realtime.emitirNovaNotificacao(userId, notif);
+    } catch (erro) {
+      this.logger.warn(
+        `Notificação ${notif.id} gravada, mas o push falhou: ${
+          erro instanceof Error ? erro.message : String(erro)
+        }`,
+      );
+    }
+
+    return notif;
   }
 
   /**

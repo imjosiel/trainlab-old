@@ -9,7 +9,15 @@ function prismaMock() {
       findUnique: jest.fn(),
       count: jest.fn(),
       updateMany: jest.fn(),
+      create: jest.fn(),
     },
+  };
+}
+
+function realtimeMock() {
+  return {
+    emitirNovaNotificacao: jest.fn().mockResolvedValue(undefined),
+    emitirNovaMensagem: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -30,12 +38,16 @@ const OUTRO = 'user-b';
 
 describe('NotificationsService', () => {
   let prisma: PrismaMock;
+  let realtime: ReturnType<typeof realtimeMock>;
   let service: NotificationsService;
 
   beforeEach(() => {
     prisma = prismaMock();
+    realtime = realtimeMock();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new NotificationsService(prisma as any);
+    // RealtimeService entrou na fatia 13 (D70): criar notificação passou a
+    // emitir o push explicitamente, no lugar do `$extends` implícito do web.
+    service = new NotificationsService(prisma as any, realtime as any);
     prisma.notification.findMany.mockResolvedValue([]);
     prisma.notification.count.mockResolvedValue(0);
   });

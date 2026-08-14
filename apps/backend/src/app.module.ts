@@ -7,10 +7,12 @@ import { ErrorContractFilter } from '@/common/error-contract.filter';
 import { MeController } from '@/auth/me.controller';
 import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
 import { RolesGuard } from '@/auth/roles.guard';
+import { AppointmentsModule } from '@/appointments/appointments.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
 import { SportsModule } from '@/sports/sports.module';
 import { UsersModule } from '@/users/users.module';
 
@@ -21,9 +23,11 @@ import { UsersModule } from '@/users/users.module';
     // process.env, que é de onde o guard lê.
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    RealtimeModule,
     SportsModule,
     NotificationsModule,
     MessagesModule,
+    AppointmentsModule,
     UsersModule,
   ],
   controllers: [HealthController, MeController],
