@@ -8,6 +8,7 @@ import { MeController } from '@/auth/me.controller';
 import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
 import { RolesGuard } from '@/auth/roles.guard';
 import { HealthController } from '@/health/health.controller';
+import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { SportsModule } from '@/sports/sports.module';
@@ -22,6 +23,7 @@ import { UsersModule } from '@/users/users.module';
     PrismaModule,
     SportsModule,
     NotificationsModule,
+    MessagesModule,
     UsersModule,
   ],
   controllers: [HealthController, MeController],
