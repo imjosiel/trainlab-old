@@ -298,6 +298,37 @@ fatia, com dois achados próprios:
 - **Notificação continua fire-and-forget**, como no legado — mas passa a avisar
   o atleta B2C também (A60), porque a assimetria não é regra, é esquecimento.
 
+### A67 — `googleapis` derrubou a CI por falta de memória, e passava aqui
+
+Depois do cutover, os **dois** jobs morreram com `FATAL ERROR: Ineffective
+mark-compacts near heap limit — JavaScript heap out of memory`. Localmente, 358
+unitários e 200 e2e verdes.
+
+A causa é o import de barril:
+
+```ts
+import { google } from 'googleapis'   // TODAS as APIs do Google
+```
+
+Medido, em vez de suposto:
+
+| | disco | heap por import |
+|---|---|---|
+| `googleapis` | 209 MB | +65 MB |
+| `@googleapis/calendar` | 851 KB | +5 MB |
+
+O `ts-jest` carrega os tipos em **cada worker**, e a superfície de tipos de
+`googleapis` é o catálogo inteiro do Google. A minha máquina tem folga de RAM e
+absorveu; o runner não.
+
+Trocado por `@googleapis/calendar`, e `googleapis` removido do backend. Efeito
+colateral que vale registrar: a suíte unitária caiu de **134s para 12s**, e a
+e2e de 27s para 10s. O barril não era só pesado na memória — era o gargalo.
+
+**Lição:** "passa na minha máquina" tem uma variante específica que é *consumo de
+recurso*, e ela só aparece onde o recurso é escasso. Dependência nova com
+superfície gigante merece a medição antes do push, não depois do vermelho.
+
 ## Cutover — feito
 
 19 chamadas em 3 arquivos apontam para `/api/backend/...`. As seis rotas legadas

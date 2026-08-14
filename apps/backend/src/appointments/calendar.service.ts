@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { calendar_v3, google } from 'googleapis';
+// `@googleapis/calendar`, não o barril `googleapis` (A67).
+//
+// O barril carrega TODAS as APIs do Google: 209 MB em disco e +65 MB de heap por
+// import, contra 851 KB e +5 MB deste. Com o ts-jest carregando os tipos de tudo
+// em cada worker, os dois jobs da CI morreram com "JavaScript heap out of
+// memory" — e passavam na minha máquina, que tem folga de RAM.
+import { auth, calendar, calendar_v3 } from '@googleapis/calendar';
 
 import { PrismaService } from '@/prisma/prisma.service';
 
@@ -39,7 +45,7 @@ export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
   private clienteOAuth() {
-    return new google.auth.OAuth2(
+    return new auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       // Mesmo redirect URI do NextAuth — não é um fluxo separado.
@@ -92,7 +98,7 @@ export class CalendarService {
         );
     });
 
-    return google.calendar({ version: 'v3', auth: oauth });
+    return calendar({ version: 'v3', auth: oauth });
   }
 
   async criarEvento(userId: string, dados: DadosDoEvento): Promise<EventoCriado | null> {
