@@ -299,6 +299,96 @@ describe('/appointments (e2e, Postgres real)', () => {
   });
 
   /* ──────────────────────────────────────────────────────────────────────────
+   * A64 / A65 — bloqueios de expediente
+   * ────────────────────────────────────────────────────────────────────────── */
+
+  describe('blocked-slots', () => {
+    async function criarBloqueio(headers: Record<string, string>, sufixo: string) {
+      return http()
+        .post('/trainer/blocked-slots')
+        .set(headers)
+        .send({
+          label: `${TAG} ${sufixo}`,
+          startTime: '2099-07-01T12:00:00.000Z',
+          endTime: '2099-07-01T13:00:00.000Z',
+        });
+    }
+
+    it('cria e lista o próprio bloqueio', async () => {
+      const criado = await criarBloqueio(comoDuplo(), 'almoço');
+      expect(criado.status).toBe(201);
+
+      const lista = await http().get('/trainer/blocked-slots').set(comoDuplo());
+      expect(lista.status).toBe(200);
+      const ids = lista.body.blockedSlots.map((s: { id: string }) => s.id);
+      expect(ids).toContain(criado.body.blockedSlot.id);
+    });
+
+    it('não lista bloqueio de outro profissional', async () => {
+      const doOutro = await criarBloqueio(comoOutroProf(), 'do outro');
+
+      const lista = await http().get('/trainer/blocked-slots').set(comoDuplo());
+
+      const ids = lista.body.blockedSlots.map((s: { id: string }) => s.id);
+      expect(ids).not.toContain(doOutro.body.blockedSlot.id);
+    });
+
+    // A64: o legado descartava o filtro inválido e devolvia TUDO.
+    it('from inválido → 400, e o válido → 200', async () => {
+      const ruim = await http().get('/trainer/blocked-slots?from=ontem').set(comoDuplo());
+      const bom = await http()
+        .get('/trainer/blocked-slots?from=2099-01-01T00:00:00.000Z')
+        .set(comoDuplo());
+
+      expect(ruim.status).toBe(400);
+      expect(bom.status).toBe(200);
+    });
+
+    it('fim antes do início → 400, e nada criado', async () => {
+      const antes = await prisma.blockedSlot.count();
+
+      const res = await http()
+        .post('/trainer/blocked-slots')
+        .set(comoDuplo())
+        .send({ startTime: '2099-07-02T13:00:00.000Z', endTime: '2099-07-02T12:00:00.000Z' });
+
+      expect(res.status).toBe(400);
+      expect(await prisma.blockedSlot.count()).toBe(antes);
+    });
+
+    // A65: o legado devolvia 403 aqui, confirmando que a linha existe.
+    it('apagar o de outro → 404 e ele sobrevive; o próprio → 200', async () => {
+      const doOutro = await criarBloqueio(comoOutroProf(), 'alheio');
+      const meu = await criarBloqueio(comoDuplo(), 'meu');
+
+      const alheio = await http()
+        .delete(`/trainer/blocked-slots/${doOutro.body.blockedSlot.id}`)
+        .set(comoDuplo());
+      const proprio = await http()
+        .delete(`/trainer/blocked-slots/${meu.body.blockedSlot.id}`)
+        .set(comoDuplo());
+
+      expect(alheio.status).toBe(404);
+      expect(proprio.status).toBe(200);
+      expect(
+        await prisma.blockedSlot.count({ where: { id: doOutro.body.blockedSlot.id } }),
+      ).toBe(1);
+    });
+
+    it('inexistente e alheio dão a MESMA resposta', async () => {
+      const doOutro = await criarBloqueio(comoOutroProf(), 'indistinguível');
+
+      const alheio = await http()
+        .delete(`/trainer/blocked-slots/${doOutro.body.blockedSlot.id}`)
+        .set(comoDuplo());
+      const fantasma = await http().delete('/trainer/blocked-slots/nao-existe').set(comoDuplo());
+
+      expect(fantasma.status).toBe(alheio.status);
+      expect(fantasma.body).toEqual(alheio.body);
+    });
+  });
+
+  /* ──────────────────────────────────────────────────────────────────────────
    * Criação
    * ────────────────────────────────────────────────────────────────────────── */
 

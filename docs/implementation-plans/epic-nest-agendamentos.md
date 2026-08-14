@@ -266,12 +266,63 @@ evento continuam os do legado (`new-notification`), senão o sino quebra.
 destinatário — e o par não-vacuoso é que, com o Pusher fora do ar, o agendamento
 **continua sendo criado** (mesma propriedade do D62).
 
+### A66 — eu disse que `BlockedSlot` não tinha rota. Tinha duas.
+
+O D69 abaixo afirmava que bloqueios só existiam embutidos na config. **Errado**:
+existem `GET`/`POST /api/trainer/blocked-slots` e `DELETE .../[id]`, com **três
+chamadas na mesma tela** que este cutover migrou.
+
+Descoberto por acidente — ao apagar `app/api/trainer/schedule-config`, o `ls` do
+diretório-pai mostrou `blocked-slots` ao lado. Meu levantamento inicial procurou
+por `appointment|agenda|schedul|booking`, e `blocked-slots` não casa com nenhum:
+**busquei pelos nomes que eu esperava, não pelo que estava na pasta.** Mesma
+família do erro da fatia 9, quando procurei um teste onde eu esperava em vez de
+onde o Jest olha.
+
+Deixá-los para trás faria uma única tela falar com dois backends, que é
+exatamente a duplicação que esta reescrita existe para desfazer. Entraram na
+fatia, com dois achados próprios:
+
+- **A64 — o filtro de data era descartado em silêncio.** `...(from && !isNaN(...)
+  ? { gte } : {})`: data inválida não virava erro, o filtro sumia e a resposta
+  vinha com **tudo**. O comentário dizia "validar antes de usar"; o código
+  validava e desistia. A tela mostra bloqueios de qualquer período achando que
+  mostra o intervalo pedido. Agora é 400.
+- **A65 — o `DELETE` devolvia 403 para bloqueio de outro profissional**, o que
+  confirma que a linha existe. Virou `deleteMany` com a posse no `where` (D17), e
+  inexistente e alheio dão o mesmo 404 (D16).
+
 ### D69 — o que NÃO entra
 
-- **`BlockedSlot` não tem rota própria** no legado (só vem embutido na config) e
-  continua assim. Criar CRUD para ele é fatia própria.
+- ~~**`BlockedSlot` não tem rota própria**~~ — errado, ver A66. Entrou.
 - **Notificação continua fire-and-forget**, como no legado — mas passa a avisar
   o atleta B2C também (A60), porque a assimetria não é regra, é esquecimento.
+
+## Cutover — feito
+
+19 chamadas em 3 arquivos apontam para `/api/backend/...`. As seis rotas legadas
+(`appointments`, `appointments/[id]`, `appointments/confirm/[token]`,
+`trainer/schedule-config`, `trainer/blocked-slots`, `trainer/blocked-slots/[id]`)
+e o teste que as cobria foram apagados, junto com `lib/google-calendar.ts`, que
+ficou sem importador — sua implementação agora é o `CalendarService`.
+
+`appointments/confirm` entrou em `PUBLIC_PREFIXES` no BFF. É a primeira rota
+migrada que precisa passar **sem sessão** pelo proxy: o link mágico chega por
+e-mail a quem pode nem ter conta.
+
+### Verificação ao vivo
+
+21 checagens pelo caminho real — cookie NextAuth → BFF → Nest → Postgres. Todas
+passam, incluindo as três que definem a fatia:
+
+- a agenda do usuário `['PROFESSIONAL','CLIENT']` traz **os dois lados** (A57)
+- `workStartHour=""` responde **400** e o banco **não** vira `0` (A58)
+- a rota pública responde **sem cookie** pelo BFF, e não devolve o token
+
+E duas que existem só para provar que o prefixo público não vazou: `GET
+/appointments` e `PATCH /appointments/:id` sem sessão seguem **401**. Liberar
+`appointments/confirm` num proxy que casa por prefixo é o tipo de mudança em que
+um `startsWith` mal posto abre a rota inteira.
 
 ## Contrato
 
