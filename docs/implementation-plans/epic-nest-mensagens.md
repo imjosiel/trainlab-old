@@ -250,10 +250,50 @@ não existir (D16), e o legado já faz isso.
 - `read` marca só as da outra pessoa, e não mexe nas próprias
 - páginas de mensagens sem pulo nem repetição com `createdAt` empatado
 
+## Cutover — feito
+
+12 chamadas em 4 arquivos apontam para `/api/backend/conversations`. As três
+rotas legadas e o teste que as cobria foram apagados.
+
+O frontend **não mudou de forma**: os consumidores já liam `res.ok` (nenhum
+comparava com `200`, o que importava porque o Nest devolve `201` no POST) e já
+liam `conversations`, `messages`, `message`, `conversation`, `unreadCount`. O
+cursor continua sendo um `conversationId` por causa do D61.
+
+`/api/pusher/auth` **fica no monolito**: autoriza canal privado a partir da
+sessão NextAuth do navegador. Agora os dois lados falam com o Pusher — a web
+autoriza, o Nest publica — e precisam das MESMAS credenciais, senão o cliente
+assina um canal de uma conta e o evento sai por outra.
+
+### Verificação ao vivo
+
+15 checagens pelo caminho real — cookie de sessão NextAuth → BFF → Nest →
+Postgres, com um usuário `['PROFESSIONAL','CLIENT']` de verdade. Todas passam,
+incluindo a que define a fatia: a lista traz a conversa em que ele é **cliente**.
+
+Os e2e já cobriam o Nest sozinho. O que só aqui se prova é que o BFF repassa o
+token e que a rota legada morreu.
+
+### A56 — o catch-all transformava 404 em 500
+
+A checagem "a rota legada não existe mais" falhou com **500**.
+
+`app/api/[[...path]]/route.ts` é um catch-all opcional que recebe todo `/api/*`
+não atendido, e chamava `connectToMongo()` como primeira linha do `try`. Sem
+`MONGO_URL` — que não existe neste ambiente — a conexão lança, cai no `catch` e
+devolve 500. O ramo 404 do próprio arquivo era inalcançável.
+
+Vale para **toda** rota que qualquer cutover apagar, e o sintoma engana: parece
+defeito de servidor, é rota que não existe.
+
+Corrigido movendo o casamento da rota para antes da conexão. As três rotas do
+catch-all (`/root`, `/`, `/status`) seguem iguais; o resto volta a ser 404.
+Medido depois: `/api/root` → 200, `/api/qualquer-coisa` → 404.
+
 ## Fica de fora
 
-- **Cutover.** Esta fatia entrega o backend; apontar os 4 consumidores e apagar as
-  rotas legadas é fatia seguinte, como foi em notificações e perfil.
-- **`/api/pusher/auth`.** Autoriza canal privado e depende da sessão NextAuth no
-  navegador. Move junto com o cutover, se mover.
-- **A52.** D63.
+- **A52.** D63 — regra de produto, fatia própria.
+- **`PUSHER_*` no `apps/backend/.env`.** Ausentes hoje. Sem elas o serviço não
+  quebra (o cliente é construído preguiçosamente e a falta é tolerada), mas não
+  há entrega em tempo real: o outro lado só vê a mensagem no próximo fetch.
+  Documentadas em `apps/backend/.env.example`.

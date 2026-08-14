@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=@trainlab/backend",
+    "predev:web": "npm run build:packages",
+    "dev:web": "npm --prefix apps/web run dev",
     "build:packages": "npm run build --workspace=@trainlab/papeis",
     "prebuild:backend": "npm run build:packages",
     "build:backend": "npm run build --workspace=@trainlab/backend",
