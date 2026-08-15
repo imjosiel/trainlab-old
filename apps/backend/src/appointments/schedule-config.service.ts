@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '@/prisma/prisma.service';
-import { inteiroNaFaixa } from './expediente';
+import { inteiroNaFaixa } from '@/common/numeros';
 
 export interface UpdateScheduleConfigBody {
   workStartHour?: unknown;

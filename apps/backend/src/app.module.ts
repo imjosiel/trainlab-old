@@ -11,6 +11,7 @@ import { AppointmentsModule } from '@/appointments/appointments.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { PartnerTiersModule } from '@/partner-tiers/partner-tiers.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { SportsModule } from '@/sports/sports.module';
@@ -28,6 +29,7 @@ import { UsersModule } from '@/users/users.module';
     NotificationsModule,
     MessagesModule,
     AppointmentsModule,
+    PartnerTiersModule,
     UsersModule,
   ],
   controllers: [HealthController, MeController],
