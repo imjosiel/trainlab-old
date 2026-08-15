@@ -29,6 +29,7 @@ function prismaMock() {
     student: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -426,6 +427,65 @@ describe('SubscriptionsService', () => {
         offer: { partnerId: PARTNER, partner: {} },
       });
       await expect(service.cancelar('sub-1', sessao(), {})).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    /**
+     * A84 — achado durante o CUTOVER, ao ler `dashboard/profile/page.js`.
+     *
+     * O legado atende DOIS tipos de id no mesmo DELETE: `PartnerSubscription.id`
+     * (aluno pago) OU `Student.id` (vínculo gratuito/manual, sem assinatura —
+     * o profissional adiciona aluno direto). `handleDisconnect` na tela chama
+     * `studentLink.id` quando não há `matchingSub` — é caminho ativo, não morto.
+     *
+     * Sem este ramo, desconectar de um profissional gratuito quebraria: a
+     * primeira busca (por PartnerSubscription) não acha nada e o serviço
+     * devolveria 404 para uma ação legítima.
+     */
+    describe('desconexão de vínculo Student (A84, sem assinatura paga)', () => {
+      beforeEach(() => {
+        prisma.partnerSubscription.findUnique.mockResolvedValue(null);
+      });
+
+      it('id de Student do próprio usuário → desconecta (userId: null)', async () => {
+        prisma.student.findUnique.mockResolvedValue({ id: 'student-1', userId: EU });
+
+        await service.cancelar('student-1', sessao(), {});
+
+        expect(prisma.student.update).toHaveBeenCalledWith({
+          where: { id: 'student-1' },
+          data: { userId: null },
+        });
+      });
+
+      it('id de Student de OUTRO usuário → 404, sem desconectar', async () => {
+        prisma.student.findUnique.mockResolvedValue({ id: 'student-1', userId: 'outro-aluno' });
+
+        await expect(service.cancelar('student-1', sessao(), {})).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        expect(prisma.student.update).not.toHaveBeenCalled();
+      });
+
+      it('nem PartnerSubscription nem Student → 404', async () => {
+        prisma.student.findUnique.mockResolvedValue(null);
+        await expect(service.cancelar('nada-existe', sessao(), {})).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
+
+      // CONTROLE: PartnerSubscription tem precedência — mesmo id nunca colide
+      // na prática (CUID de tabelas diferentes), mas prova que o primeiro ramo
+      // não foi acidentalmente removido ao adicionar o segundo.
+      it('[controle] com PartnerSubscription existente, não olha Student', async () => {
+        prisma.partnerSubscription.findUnique.mockResolvedValue({
+          id: 'sub-1', userId: EU, status: 'active', stripeSubscriptionId: 'sub_real_1',
+          offer: { partnerId: PARTNER, price: 100, hourlyRate: null, partner: { stripeAccountId: 'acct_1' } },
+        });
+
+        await service.cancelar('sub-1', sessao(), {});
+
+        expect(prisma.student.findUnique).not.toHaveBeenCalled();
+      });
     });
 
     it('cancelamento simples agenda no fim do período, não cancela na hora', async () => {

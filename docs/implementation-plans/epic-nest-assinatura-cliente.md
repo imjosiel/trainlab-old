@@ -510,3 +510,109 @@ As dez pontas do SDK do Stripe (`checkout.sessions`, `customers`, `products`,
 implementadas de verdade, com o mesmo padrão preguiçoso do `RealtimeService` e
 do `CalendarService`: instancia só no primeiro uso, para a ausência de
 `STRIPE_SECRET_KEY` não derrubar rotas sem relação com pagamento.
+
+## A84 — o ramo que faltou no cutover: desconectar de profissional gratuito
+
+Achado ao ler `dashboard/profile/page.js` antes de trocar as URLs, não em
+teste. `DELETE /user/subscriptions/[id]` no legado atende **dois** tipos de id
+no mesmo endpoint:
+
+```js
+// 1. É PartnerSubscription?
+if (subscription && subscription.userId === session.id) { ...cancela... }
+// 2. É Student record (treinador gratuito)? — desconecta imediatamente
+if (studentLink && studentLink.userId === session.id) { ...desconecta... }
+```
+
+Minha primeira versão de `cancelar()` só tinha o primeiro ramo. `handleDisconnect`
+na tela chama com `studentLink.id` sempre que não há `matchingSub` — é caminho
+ativo (aluno vinculado sem nunca ter pago, o profissional cadastrou manual),
+não redundância. Sem o segundo ramo, desconectar de um profissional gratuito
+devolveria 404 para uma ação legítima — regressão real, silenciosa, que só um
+teste de UI ou o próprio usuário reclamando revelaria em produção.
+
+Corrigido com TDD antes de seguir o cutover: teste vermelho (`id de Student do
+próprio usuário → desconecta`), depois `desconectarStudent()` como segundo
+ramo, com o mesmo padrão de posse por filtro (D17) — `Student` de outro usuário
+dá 404, igual a inexistente. 44 testes no arquivo, todos verdes.
+
+## Cutover — feito pela metade, de propósito
+
+19 chamadas em 8 telas apontadas para `/api/backend/...`. Nove rotas legadas
+apagadas (`partner/offers` completo, `user/subscriptions` completo,
+`partner/subscribers`, `admin/users/[id]/subscription`), com os três arquivos
+de teste que as cobriam.
+
+`partner/offers/public` e `stripe/webhook-b2b` entraram em `PUBLIC_PREFIXES`
+no BFF, com seis testes novos na suíte de proxy — incluindo a prova de que o
+corpo do webhook atravessa **byte a byte**, sem reserialização (a assinatura do
+Stripe depende disso), e que o header `stripe-signature` chega intacto.
+Verificado por mutação: tirar `stripe/webhook-b2b` da lista derruba exatamente
+os três testes que dependem dele.
+
+### O que NÃO apaguei, e por quê
+
+`apps/web/app/api/stripe/webhook/route.ts` — **intocado**. Continua com os
+handlers B2B inteiros (`handleB2BCheckoutComplete`,
+`handleB2BSubscriptionUpdate/Deleted`, `handleB2BInvoicePaymentSucceeded/Failed`,
+`processAffiliateCommission`).
+
+Isto não é decisão técnica, é limite do que dá para fazer daqui. O Stripe está
+configurado **hoje** para mandar eventos B2B para esse endpoint — mudar isso
+exige mexer no Painel do Stripe, e eu não tenho acesso a ele. Migrar o código e
+esquecer do painel deixaria os handlers novos existindo, mas sem tráfego
+nenhum: o backend antigo continuaria processando tudo, silenciosamente, e a
+fatia inteira teria sido código morto.
+
+Pior seria o caminho contrário — apagar os handlers do endpoint antigo **antes**
+de o painel apontar para o novo. Nesse intervalo, todo evento B2B (assinatura
+paga, comissão de afiliado) cairia no `default` do switch e não seria
+processado por ninguém. Silencioso, sem 500, sem log de erro óbvio — só
+dinheiro que devia se mover e não se moveu.
+
+Cheguei a considerar rodar os dois endpoints em paralelo por um tempo, como
+transição seguindo o padrão desta fatia (idempotência por reivindicação). Não
+é seguro por padrão: os dois pontos compartilham a mesma tabela
+`ProcessedWebhookEvent`, mas o endpoint antigo ainda faz check-then-act (é
+justamente o A74) — ele só grava o próprio marcador **no final**, depois de já
+ter processado. Se as duas entregas do Stripe chegarem quase juntas, o novo
+endpoint reivindica primeiro (grava logo no início) e ainda assim o antigo pode
+já estar no meio do próprio processamento, sem ter visto a reivindicação. As
+duas transferem no Stripe. `transfers.create` não é operação que se desfaz
+sozinha.
+
+**O que fica pendente, e é ação do Josiel, não minha:**
+
+1. Adicionar um segundo endpoint no Painel do Stripe apontando para
+   `<domínio>/api/backend/stripe/webhook-b2b`, assinando exatamente os seis
+   tipos de evento que o `B2BWebhookService` trata:
+   `checkout.session.completed`, `customer.subscription.created`,
+   `customer.subscription.updated`, `customer.subscription.deleted`,
+   `invoice.payment_succeeded`, `invoice.payment_failed`.
+2. Copiar o segredo de assinatura que o Stripe gerar para esse endpoint em
+   `STRIPE_WEBHOOK_SECRET_B2B`, no `.env` do backend.
+3. **Só depois** de confirmar que o novo endpoint está recebendo e processando
+   eventos de verdade (staging, ou um evento de teste do próprio Painel),
+   remover os handlers B2B do endpoint antigo — nessa ordem, sem sobreposição
+   de tráfego real.
+
+Até lá, o backend novo processa exatamente zero pagamentos B2B reais. Testado,
+verde, no ar — e desligado da fonte de eventos até essa troca manual acontecer.
+
+### A85 — rate limit não foi portado (registrado, não corrigido)
+
+O legado protege `POST /partner/offers` (`checkRateLimit('partnerOffer', ...)`)
+e o checkout trial (`checkRateLimit('checkoutB2BTrial', ...)`) contra abuso.
+Nenhum dos dois entrou no Nest — não havia limitador equivalente disponível no
+backend nesta fatia, e criar um do zero é escopo maior que um cutover.
+
+Não é rota de dinheiro sem proteção nenhuma: `criar()` exige parceiro aprovado
+e `payoutsEnabled`, o que já filtra a maior parte do abuso trivial. Mas
+criação de produto no Stripe a cada chamada, sem limite, é superfície real.
+Registrado para fatia própria de infraestrutura (limitador compartilhado no
+backend), não para esta.
+
+### Suítes finais
+
+Backend: **601** unitários (+4 do A84, achado durante o cutover) + **231** e2e.
+Web: **183** Jest + 65 Vitest.

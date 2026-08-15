@@ -302,6 +302,23 @@ export class SubscriptionsService {
     }
   }
 
+  /**
+   * A84 — o ramo do `DELETE /user/subscriptions/:id` para vínculo SEM
+   * assinatura paga: o profissional adicionou o aluno manualmente
+   * (plano gratuito), então não existe `PartnerSubscription` nenhuma —
+   * desconectar é só soltar o `Student.userId`.
+   */
+  private async desconectarStudent(
+    id: string,
+    userId: string,
+  ): Promise<{ success: true; message: string }> {
+    const vinculo = await this.prisma.student.findUnique({ where: { id } });
+    if (!vinculo || vinculo.userId !== userId) throw new NotFoundException({ error: 'Not Found' });
+
+    await this.prisma.student.update({ where: { id: vinculo.id }, data: { userId: null } });
+    return { success: true, message: 'Desconectado do treinador com sucesso.' };
+  }
+
   /* ────────────────────────────────────────────────────────────────────────
    * Verificação pós-checkout — D81
    * ──────────────────────────────────────────────────────────────────────── */
@@ -375,7 +392,15 @@ export class SubscriptionsService {
       where: { id },
       include: { offer: { include: { partner: true } } },
     });
-    if (!sub || sub.userId !== user.id) throw new NotFoundException({ error: 'Not Found' });
+
+    // A84 — o mesmo endpoint atende dois tipos de id: PartnerSubscription
+    // (aluno pago) OU Student (vínculo gratuito/manual, sem nenhuma
+    // assinatura). `dashboard/profile` chama com o id que tiver — é caminho
+    // ativo, não redundância. Sem este ramo, desconectar de um profissional
+    // gratuito devolveria 404 para uma ação legítima.
+    if (!sub || sub.userId !== user.id) {
+      return this.desconectarStudent(id, user.id);
+    }
 
     const ehAssinaturaReal =
       !!sub.stripeSubscriptionId &&
