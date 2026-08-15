@@ -194,6 +194,46 @@ sempre: `{ tier }`, `{ tiers }`, `{ requests }`.
 é troca pura. Os consumidores do admin serão ajustados junto, e a mudança está
 aqui registrada como deliberada.
 
+## Cutover — feito
+
+19 chamadas em 5 telas e 2 suítes e2e do web apontam para `/api/backend/...`. As
+sete rotas legadas foram apagadas. `POST /partner/tier-request` **fica**, com o
+`GET` do mesmo arquivo: ele cria checkout Stripe e é da fatia seguinte.
+
+`public/partner-tiers` entrou em `PUBLIC_PREFIXES` no BFF.
+
+### O D74 acabou sendo invisível para a tela — eu tinha previsto o contrário
+
+A spec dizia que este seria o primeiro cutover que não é troca pura, porque as
+respostas passariam a embrulhar em `{ tier }` e o 401 viraria 403.
+
+Fui conferir consumidor por consumidor antes de mexer, e a previsão estava
+errada: **ninguém lê o corpo do POST/PUT** (o `admin/pricing` só checa `res.ok` e
+refaz a busca), e todos os `GET` já liam `.tiers` / `.requests`. Nenhuma tela
+mudou.
+
+Registrado porque a previsão errada era o argumento para pedir uma decisão ao
+Josiel — e a decisão não era necessária.
+
+### Verificação, e por que ela não foi pelo navegador
+
+A porta 3000 estava ocupada por **outro projeto do Josiel** (`opusclip-api`), que
+a tomou depois que o dev server do Next caiu. Não derrubei processo que não é
+desta sessão.
+
+A prova foi para a suíte de proxy do BFF, que já existia com o formato certo —
+positivo e negativo lado a lado. Seis casos novos:
+
+- `/appointments/confirm/:token` e `/public/partner-tiers` passam **sem sessão**
+- `/appointments`, `/appointments/:id`, `/admin/partner-tiers` e `/partner/tiers`
+  seguem em **401**
+
+Liberar por prefixo num proxy é o tipo de mudança em que um `startsWith` mal
+posto abre a rota inteira, e o sintoma é acesso indevido em silêncio. Verificado
+por mutação: tirar `public/partner-tiers` da lista derruba exatamente um teste.
+
+Web: 210 → **216** Jest, 65 Vitest.
+
 ## Plano de testes
 
 **Unitários:**
