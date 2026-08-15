@@ -1027,7 +1027,20 @@ model ProcessedWebhookEvent {
   eventId   String   @id
   createdAt DateTime @default(now())
 
+  // D75 — a linha passa a ser RESERVA, não recibo.
+  //
+  // O legado gravava aqui só depois de o handler terminar, e consultava antes de
+  // começar: check-then-act. Duas entregas simultâneas do mesmo evento rodavam o
+  // handler DUAS vezes antes de a segunda levar violação de chave (A74).
+  //
+  // Agora o INSERT vem primeiro e a chave primária vira trava. `claimedAt` existe
+  // para o caso do processo que morre no meio: sem ele, a reserva trancaria o
+  // evento para sempre, e o Stripe desiste depois de algumas tentativas.
+  status    String   @default("processando") // processando | concluido
+  claimedAt DateTime @default(now())
+
   @@index([createdAt])
+  @@index([status, claimedAt])
 }
 
 // ============================================

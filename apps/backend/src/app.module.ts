@@ -8,6 +8,7 @@ import { MeController } from '@/auth/me.controller';
 import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
 import { RolesGuard } from '@/auth/roles.guard';
 import { AppointmentsModule } from '@/appointments/appointments.module';
+import { BillingModule } from '@/billing/billing.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
@@ -30,6 +31,7 @@ import { UsersModule } from '@/users/users.module';
     MessagesModule,
     AppointmentsModule,
     PartnerTiersModule,
+    BillingModule,
     UsersModule,
   ],
   controllers: [HealthController, MeController],
