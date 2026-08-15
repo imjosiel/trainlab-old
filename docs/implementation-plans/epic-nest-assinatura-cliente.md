@@ -1,18 +1,26 @@
 # Fatia 15 — assinatura do cliente (B2B) e o webhook
 
-**Estado:** o **núcleo de dinheiro** está verde. O CRUD ainda não começou.
+**Estado:** backend completo e verde — núcleo de dinheiro e as nove rotas +
+webhook B2B. Cutover ainda não.
 
 | peça | testes | situação |
 |---|---|---|
 | `WebhookClaimService` (D75) | 11 | **verde** |
 | `AffiliateCommissionService` (D76/D77) | 19 | **verde** |
-| ofertas, checkout, assinaturas do cliente | — | ainda sem teste |
+| `OffersService` (D79) | 27 | **verde** |
+| `SubscriptionsService` (D78/D80/D81) | 40 | **verde** |
+| `AdminSubscriptionsService` | 11 | **verde** |
+| `B2BWebhookService` | 25 | **verde** |
+| e2e de corrida contra Postgres real | 2 | **verde** |
 
-Backend: 464 → **494** unitários. `tsc --noEmit` limpo.
+Backend: 358 → **597** unitários, 200 → **231** e2e. `tsc --noEmit` limpo. Nove
+controllers, treze rotas, todas verificadas de pé no servidor real (seção
+abaixo).
 
-Comecei por estas duas porque são as que movem dinheiro e as que o legado erra:
-o resto da fatia é CRUD com posse, que esta migração já fez cinco vezes. Se
-alguma decisão aqui mudar, ela muda o formato do resto — o contrário não.
+Comecei pelo núcleo de dinheiro porque é o que move dinheiro e o que o legado
+erra: o resto da fatia é CRUD com posse, que esta migração já fez cinco vezes.
+Foi a decisão certa — nenhuma peça do CRUD precisou reabrir o desenho do
+núcleo.
 
 ### Verificação por mutação
 
@@ -183,6 +191,108 @@ O `catch` da 627 cobre a função inteira: falha de transferência, violação d
 unicidade e erro de banco viram a mesma linha de log e nenhum sinal. É o que
 transforma o A75 de incidente detectável em incidente silencioso.
 
+### A78 — assinatura duplicada é check-then-act, sem trava no banco
+
+**Já corrigido — schema mudou antes do resto do código, porque a decisão de
+schema trava tudo o que vem depois.**
+
+Três lugares fazem a mesma checagem, sozinhos: `checkout/route.ts`,
+`checkout/verify/route.ts` e o próprio `handleB2BCheckoutComplete` do webhook.
+Todos fazem `findFirst` por assinatura ativa do mesmo aluno com o mesmo
+treinador, e só criam se não achar.
+
+Provado contra Postgres real, e só na **segunda tentativa** — a primeira, com um
+`Promise.all` sobre o mesmo `PrismaClient`, serializou as consultas e não
+reproduziu nada. Só forçando três conexões independentes com uma barreira comum
+a corrida apareceu:
+
+```
+resultados: [ 'assinou', 'assinou', 'assinou' ]
+assinaturas para o MESMO usuário e parceiro: 3
+```
+
+O comentário do próprio legado mostra que a corrida era conhecida: *"BUG 48 fix:
+`Date.now()` pode colidir em requests simultâneos (duplo-click) — usar UUID."*
+Trocar por UUID tira a colisão de **id**, não a de **regra** — o efeito foi
+tornar a duplicata silenciosa em vez de impedi-la.
+
+### D78 — `partnerId` denormalizado + índice único parcial
+
+`PartnerSubscription` ganhou `partnerId`, migration
+`20260815140000_partner_subscription_partner_id`. Copiado de
+`offer.partnerId` porque o banco só pode vigiar colunas que enxerga na mesma
+linha, e a regra é sobre aluno+parceiro, não sobre aluno+oferta.
+
+Seguro copiar porque nenhuma rota do produto move oferta de um parceiro para
+outro — conferido antes de decidir, não assumido.
+
+```sql
+CREATE UNIQUE INDEX "PartnerSubscription_userId_partnerId_active_key"
+  ON "PartnerSubscription" ("userId", "partnerId")
+  WHERE "userId" IS NOT NULL AND "partnerId" IS NOT NULL
+    AND status IN ('active', 'canceling', 'trialing', 'past_due');
+```
+
+Parcial de propósito: histórico cancelado não pode bloquear reassinatura
+legítima. Verificado com o mesmo ataque de três conexões — agora **uma** passa,
+e nenhum código verificou nada antes: o índice decidiu sozinho.
+
+Banco de desenvolvimento tinha zero `PartnerSubscription` — nada para limpar. A
+query de diagnóstico para outros ambientes fica documentada na própria
+migration.
+
+### A79 — a página de venda pública devolve a conta financeira inteira do parceiro
+
+`GET /partner/offers/public/[id]` não pede sessão — é a página que o aluno vê
+antes de assinar. E devolve:
+
+```ts
+include: { partner: { include: { user: {...} } }, _count: {...} } }
+```
+
+`include` sem seleção nenhuma no `partner` traz os **21 campos** de
+`PartnerAccount`: `stripeAccountId`, `stripeAccountStatus`, `commissionRate`,
+`customCommissionRate`, `minimumPayoutAmount`, `bonusThreshold`,
+`bonusRateDrop`, `payoutsFrozen`, `motivation`, `rejectionReason`,
+`approvedById`, entre outros.
+
+É a mesma classe do A9 (perfil público de atleta) e do A11 (perfil próprio) —
+`include` como allowlist de **relação**, não de **campo**, numa rota sem
+sessão. A régua comercial do parceiro (quanto a plataforma fica) fica visível a
+qualquer um com o link da oferta.
+
+### A80 — o `GET` de assinaturas do cliente sincroniza, escreve e nunca para
+
+`GET /user/subscriptions` chama `stripe.subscriptions.retrieve()` **uma vez por
+assinatura ativa** (N+1, sem paralelismo real — `Promise.all` sobre chamadas de
+rede, uma por vez na prática por causa do rate limit do Stripe), e dentro do
+mesmo `GET`:
+
+- atualiza `status` no banco quando diverge do Stripe
+- cria `Notification` de downgrade pronto (com uma checagem de duplicata que
+  não usa unicidade — só "notificação recente do mesmo tipo existe?")
+- reconecta `Student.userId` de quem tinha ficado órfão
+
+É o A70 (fatia 14) multiplicado: lá era um `upsert` de config; aqui é chamada de
+rede externa, mais update condicional, mais criação de notificação, mais
+reconexão de vínculo — tudo atrás de um verbo que promete só ler.
+
+O comentário do próprio arquivo admite o motivo: *"garante consistência mesmo
+em ambientes locais sem Stripe CLI (webhooks não chegam)."* É contorno de
+ambiente de desenvolvimento, promovido a comportamento de produção.
+
+### A81 — confirmação pelo `verify` e pelo webhook competem pela mesma linha, sem se falarem
+
+`checkout/verify` (chamado pelo navegador ao voltar do Stripe) e
+`handleB2BCheckoutComplete` (chamado pelo Stripe) criam `PartnerSubscription`
+para o **mesmo** `stripeSubscriptionId`. A coluna é `@unique` de verdade — a
+diferença do A74/A78 é que aqui **existe** trava no banco.
+
+O problema é o que acontece quando a trava dispara: nenhum dos dois lados
+espera um P2002 ali. Quem perde a corrida cai no `catch` genérico da rota e
+devolve 500 — para um cliente cuja assinatura **foi criada com sucesso** pelo
+outro caminho. O aluno vê erro numa compra que funcionou.
+
 ## Decisões
 
 ### D75 — reivindicar antes de trabalhar
@@ -213,6 +323,61 @@ Erro em comissão passa a subir. O webhook devolve 500, o Stripe reentrega, e o
 D75 garante que reentregar é seguro. Perder comissão em silêncio é pior que
 devolver 500 — o Stripe existe justamente para insistir.
 
+### D79 — a página pública devolve `select` explícito, sem financeiro
+
+Mesma correção do A9/A11: troca `include` por `select`, listando o que a página
+de venda precisa mostrar — nome, foto, username do profissional — e nada do
+lado financeiro da conta.
+
+### D80 — o `GET` de assinaturas para de sincronizar, e o motivo é que esta
+### própria fatia torna a sincronização desnecessária
+
+Esta é a decisão que muda mais forma, e por isso fica documentada por extenso.
+
+O comentário do legado justifica o polling do Stripe dizendo que webhooks podem
+não chegar em ambiente local. Verdade — mas é sintoma de **desenvolvimento sem
+Stripe CLI rodando**, não de o webhook ser structuralmente não-confiável. Em
+produção, o webhook é quem muda o status; o `GET` só deveria mostrar o que já
+está gravado.
+
+E esta fatia está justamente **endurecendo o webhook**: o D75 dá idempotência
+real por reivindicação, o D76 ordena reserva antes de dinheiro. Depois desta
+fatia, o webhook B2B é a fonte de verdade mais confiável que existe no sistema —
+manter uma segunda fonte de verdade (polling a cada leitura) é o tipo de
+duplicação que esta migração inteira existe para eliminar.
+
+**`SubscriptionsService.list()` vira leitura pura**: sem chamada ao Stripe, sem
+`update`, sem `create` de notificação, sem tocar em `Student`. Lê o que o
+webhook já gravou.
+
+Duas coisas que o `GET` fazia como rede de segurança migram para onde a
+correção pertence:
+
+- **Notificação de downgrade pronto** — já é responsabilidade de
+  `handleB2BSubscriptionDeleted` no webhook (linha 468–479 do legado, que este
+  cutover também está migrando). A cópia que vivia no `GET` era duplicata
+  defensiva; sai.
+- **Reconexão de `Student.userId` órfão** — passa a acontecer na **criação** da
+  assinatura (`SubscriptionsService.criar`), não a cada leitura. É onde a
+  informação (email do comprador) já está disponível, sem precisar redescobrir
+  a cada `GET`.
+
+O contrato de resposta não muda: `{ subscriptions, trainers, systemSettings }`,
+os mesmos campos. O cutover do frontend não precisa saber que a origem do dado
+ficou mais simples.
+
+**O que fica de fora de propósito:** ambiente local sem Stripe CLI configurado
+volta a mostrar status desatualizado até o próximo evento real. Isso é
+característica de ambiente de dev, documentada em `DEVELOPMENT.md`, não bug de
+produção escondido atrás de uma chamada de rede a cada carga de tela.
+
+### D81 — `verify` e webhook não competem: o segundo a chegar reconcilia, não erra
+
+O P2002 em `stripeSubscriptionId` deixa de cair no `catch` genérico. Quem perde
+a corrida busca a linha que o outro criou e devolve o mesmo resultado de
+sucesso — a mesma lógica do `reivindicar` do D75, aplicada aqui sem precisar de
+tabela nova, porque a unicidade já existe na coluna.
+
 ## Plano de testes
 
 **Unitários** (Stripe e Prisma mockados):
@@ -229,12 +394,119 @@ devolver 500 — o Stripe existe justamente para insistir.
 
 - `checkout.session.completed` e `invoice.payment_succeeded` do mesmo cliente,
   **em paralelo** ⇒ exatamente um `AffiliateEarning` e uma transferência
-- assinatura duplicada com o mesmo profissional ⇒ 409, pareado com o caso
-  legítimo em 200/201
+- assinatura duplicada com o mesmo profissional (checkout pago, grátis e trial)
+  ⇒ 409/bloqueio, pareado com o caso legítimo em 200/201 (A55)
+- **três conexões concorrentes criando assinatura para o mesmo par
+  aluno+parceiro ⇒ exatamente uma passa** (prova direta do índice do D78)
+- `verify` e webhook chamados para a mesma `stripeSubscriptionId` em paralelo ⇒
+  os dois devolvem sucesso, uma linha só (D81)
 - cancelar e retomar mantêm `stripeSubscriptionId` estável
+- `GET /user/subscriptions` não muda o banco: medir contagem de queries de
+  escrita antes/depois de chamar a rota, tem que ser zero (D80)
+
+**Unitários adicionais desta metade:**
+
+- página pública de oferta: corpo da resposta não tem `stripeAccountId`,
+  `commissionRate` nem os outros 19 campos financeiros (D79)
+- listagem de assinaturas nunca chama `stripe.subscriptions.retrieve` (D80)
+- criar assinatura reconecta `Student.userId` quando existe registro órfão com
+  o mesmo email
+- guest checkout (sem `userId`) ainda cria a assinatura, e a checagem de
+  duplicata não se aplica a ele — paridade explícita com o legado, não descoberta
+  tardia
+- admin `grant`/`revoke`: IDOR — revogar assinatura de outro usuário via
+  `subscriptionId` de terceiro ⇒ 404, não sucesso silencioso
 
 ## Fica de fora
 
 Handlers B2C, de créditos e de tier do parceiro — seguem no webhook do monolito.
 O `stripe/checkout-partner-tier` e o `POST /partner/tier-request` também, e
 fecham quando essa metade migrar.
+
+**A83 — guest checkout pula a checagem de duplicata.** `if (userId) { ...guarda...
+}` no legado: sem sessão, qualquer volume de assinaturas passa. Não é
+corrida — é ausência de regra. Registrado, não corrigido: mudar isso é decidir
+se guest checkout deve identificar por email, o que é política de produto,
+não port. Com o D78, o índice parcial já filtra `userId IS NOT NULL`, então o
+comportamento observável é o mesmo do legado — a lacuna sobrevive por
+construção do índice, não por descuido novo.
+
+**Ambiente local sem Stripe CLI mostrando status desatualizado** — consequência
+aceita do D80. Registrar em `DEVELOPMENT.md` como nota de setup, fora do escopo
+de código desta fatia.
+
+## Segunda metade — feita
+
+Nove rotas + webhook B2B, em quatro serviços e sete controllers, todos sob
+`BillingModule`.
+
+### A63 nesta metade — dois testes meus estavam contraditórios
+
+Ao implementar, dois testes da rodada vermelha se revelaram errados, não o
+código: `service.checkout(OFFER, null, {})` aparecia em dois testes esperando
+**exceções diferentes** para a mesma chamada — um 400 (sem email), outro 401
+(sem sessão). São contraditórios por construção; o legado checa email antes de
+qualquer ramo, então sem email a resposta é sempre 400, nunca 401.
+
+Um terceiro teste (A83) chamava `checkout()` para provar que guest não é
+bloqueado por duplicata — mas `checkout()` nunca grava linha no caminho pago;
+quem grava é `verificarCheckout()` ou o webhook, depois do Stripe confirmar. O
+teste testava o método errado. Corrigido movendo a asserção para
+`verificarCheckout()`, com `metadata.userId: 'guest'` — que é exatamente onde a
+lacuna do A83 vive de verdade.
+
+Os três foram pegos rodando os testes contra a implementação, não relidos a
+frio — é a suíte fazendo o trabalho de encontrar a própria vacuidade.
+
+### Verificação por mutação, aplicada às duas decisões centrais desta metade
+
+**D78 — traduzir P2002 em `ConflictException`.** Removida a tradução, deixando
+o erro cru do Prisma subir: 1 unitário e 1 e2e caem — e só esses. O e2e
+continua com 1 sucesso (o índice do banco protege de qualquer jeito), mas
+`conflitos` fica em 0: a diferença que a mutação prova é entre "bloqueado" e
+"bloqueado do jeito certo".
+
+Uma primeira tentativa de mutação (reintroduzir `findFirst` antes do `create`)
+**não quebrou nada** — e isso também é informação: o índice do D78 protege
+independente do código de aplicação, então adicionar de volta o check-then-act
+do legado é redundante, não perigoso. Defesa em profundidade real.
+
+**D80 — sincronizar com o Stripe dentro de `listar()`.** Reintroduzida uma
+chamada a `stripe.recuperarSessaoDeCheckout()` por assinatura. Cai exatamente
+`NUNCA chama o Stripe`, e nenhum outro teste — a suíte de leitura pura tem
+precisão cirúrgica.
+
+### Verificação ao vivo
+
+Servidor real, `npm run dev:backend`, log completo do boot conferido: as treze
+rotas mapeadas, sem colisão de path (`OffersController` em `/partner/offers` e
+`CheckoutController` em `/partner/offers/:id` coexistem sem conflito — verbos e
+sub-caminhos diferentes).
+
+```
+GET  /health                                  -> 200
+GET  /public/partner-tiers                    -> 200
+GET  /partner/offers/public/nao-existe        -> 404
+POST /stripe/webhook-b2b (sem assinatura)     -> 400, mensagem clara
+GET  /user/subscriptions (sem token)          -> 401
+```
+
+O webhook recusa com mensagem legível (`STRIPE_WEBHOOK_SECRET_B2B ausente`) em
+vez de 500 genérico — o `.env` ainda não tem o segredo B2B configurado, e isso
+é esperado neste ponto.
+
+### Peça de infraestrutura nova: corpo cru para o webhook
+
+`main.ts` ganhou `{ rawBody: true }` no `NestFactory.create`. Sem isso, o
+Express reserializa o JSON antes do handler ver o corpo, e
+`stripe.webhooks.constructEvent` falha a verificação de assinatura mesmo com o
+segredo certo — a verificação é sobre os bytes exatos que o Stripe assinou, não
+sobre uma releitura do JSON.
+
+### `StripeService` deixou de ser esqueleto
+
+As dez pontas do SDK do Stripe (`checkout.sessions`, `customers`, `products`,
+`prices`, `subscriptions`, `transfers`, `webhooks.constructEvent`) foram
+implementadas de verdade, com o mesmo padrão preguiçoso do `RealtimeService` e
+do `CalendarService`: instancia só no primeiro uso, para a ausência de
+`STRIPE_SECRET_KEY` não derrubar rotas sem relação com pagamento.

@@ -29,7 +29,11 @@ function exigirSegredoDeSessao(): void {
 }
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // `rawBody: true` — o webhook do Stripe verifica a assinatura sobre os bytes
+  // exatos do corpo. O parser padrão do Express reserializa o JSON, e a
+  // verificação falharia mesmo com o segredo certo. Nest preenche
+  // `request.rawBody` mantendo o parse normal para todo o resto.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   exigirSegredoDeSessao();
 
   app.enableCors({

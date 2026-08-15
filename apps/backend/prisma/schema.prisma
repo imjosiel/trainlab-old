@@ -689,8 +689,9 @@ model PartnerAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  offers       PartnerOffer[]
-  tierRequests PartnerTierRequest[]
+  offers        PartnerOffer[]
+  tierRequests  PartnerTierRequest[]
+  subscriptions PartnerSubscription[]
 
   @@index([status])
   @@index([stripeAccountId])
@@ -796,6 +797,24 @@ model PartnerSubscription {
   offerId String
   offer   PartnerOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
+  // A79/D78 — denormalizado de `offer.partnerId` de propósito.
+  //
+  // O legado impedia assinatura duplicada (mesmo aluno + mesmo treinador) com
+  // check-then-act: `findFirst` por assinatura ativa, e só então `create`. Sem
+  // trava no banco, dois cliques simultâneos passam os dois pela consulta antes
+  // de qualquer um escrever — medido contra Postgres real: 3 conexões
+  // concorrentes, 3 assinaturas criadas para o mesmo par aluno/treinador (A78).
+  //
+  // O banco só pode vigiar uma combinação de colunas que ele CONSEGUE VER na
+  // mesma linha. `partnerId` só existia via `offer.partnerId`, então a regra
+  // "único aluno+treinador entre os ativos" não tinha onde morar.
+  //
+  // Copiar é seguro aqui porque `PartnerOffer.partnerId` é escrito só na
+  // criação — nenhuma rota do produto move oferta de um parceiro para outro.
+  // Sem essa reescrita nunca acontecendo, a cópia não tem como desatualizar.
+  partnerId String?
+  partner   PartnerAccount? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   email  String  // sempre presente — suporta guest checkout
@@ -815,6 +834,7 @@ model PartnerSubscription {
 
   @@index([offerId])
   @@index([userId])
+  @@index([partnerId])
   @@index([status])
   @@index([stripeSubscriptionId])
 }

@@ -1,20 +1,47 @@
 import { Module } from '@nestjs/common';
 
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { AdminSubscriptionsController } from './admin-subscriptions.controller';
+import { AdminSubscriptionsService } from './admin-subscriptions.service';
 import { AffiliateCommissionService } from './affiliate-commission.service';
+import { B2BWebhookController } from './b2b-webhook.controller';
+import { B2BWebhookService } from './b2b-webhook.service';
+import { OffersController, PublicOffersController } from './offers.controller';
+import { OffersService } from './offers.service';
 import { StripeService } from './stripe.service';
+import {
+  CheckoutController,
+  SubscribersController,
+  SubscriptionsController,
+} from './subscriptions.controller';
+import { SubscriptionsService } from './subscriptions.service';
 import { WebhookClaimService } from './webhook-claim.service';
 
 /**
- * Núcleo de dinheiro da fatia 15.
- *
- * Ainda sem controller: as rotas (ofertas, checkout, assinaturas do cliente e o
- * webhook) vêm na segunda metade. O que está aqui são as duas peças que o A74 e
- * o A75 descrevem, e que o resto vai usar.
+ * Módulo de dinheiro da fatia 15, completo: o núcleo (claim de webhook,
+ * comissão de afiliado) e a segunda metade (ofertas, assinaturas do cliente,
+ * override do admin, webhook B2B).
  */
 @Module({
   imports: [NotificationsModule],
-  providers: [WebhookClaimService, AffiliateCommissionService, StripeService],
+  controllers: [
+    PublicOffersController,
+    OffersController,
+    SubscriptionsController,
+    CheckoutController,
+    SubscribersController,
+    AdminSubscriptionsController,
+    B2BWebhookController,
+  ],
+  providers: [
+    WebhookClaimService,
+    AffiliateCommissionService,
+    StripeService,
+    OffersService,
+    SubscriptionsService,
+    AdminSubscriptionsService,
+    B2BWebhookService,
+  ],
   exports: [WebhookClaimService, AffiliateCommissionService, StripeService],
 })
 export class BillingModule {}
