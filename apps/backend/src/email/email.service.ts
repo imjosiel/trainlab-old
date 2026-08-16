@@ -95,4 +95,85 @@ export class EmailService {
       );
     }
   }
+
+  /** D90 — mesmo padrão do resto do EmailService (D86): nunca lança. */
+  async enviarPlanoAprovado(dados: {
+    athleteName: string;
+    athleteEmail: string;
+    trainerName: string;
+    planTitle: string;
+  }): Promise<void> {
+    const resend = this.sdk();
+    if (!resend) return;
+
+    const base = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+
+    try {
+      await resend.emails.send({
+        from: FROM,
+        to: dados.athleteEmail,
+        subject: `✅ Seu plano de treino foi aprovado — ${dados.planTitle}`,
+        html: baseTemplate(`
+          <h2 style="color: #16a34a; margin: 0 0 8px;">Plano aprovado! 🎉</h2>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Olá, <strong>${escapeHtml(dados.athleteName)}</strong>! O seu treinador <strong>${escapeHtml(dados.trainerName)}</strong>
+            acabou de aprovar o seu plano de treino personalizado.
+          </p>
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="margin: 0; color: #166534; font-size: 14px; font-weight: 600;">📋 ${escapeHtml(dados.planTitle)}</p>
+          </div>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${base}/dashboard"
+               style="background: #16a34a; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
+              Ver Meu Plano →
+            </a>
+          </div>
+        `),
+      });
+    } catch (erro) {
+      this.logger.warn(
+        `Falha ao enviar aprovação do plano para ${dados.athleteEmail}: ${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+    }
+  }
+
+  async enviarPlanoConcluido(dados: {
+    trainerName: string;
+    trainerEmail: string;
+    athleteName: string;
+    planTitle: string;
+  }): Promise<void> {
+    const resend = this.sdk();
+    if (!resend) return;
+
+    const base = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+
+    try {
+      await resend.emails.send({
+        from: FROM,
+        to: dados.trainerEmail,
+        subject: `🏆 ${dados.athleteName} concluiu o plano — ${dados.planTitle}`,
+        html: baseTemplate(`
+          <h2 style="color: #16a34a; margin: 0 0 8px;">Plano concluído! 🏆</h2>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Olá, <strong>${escapeHtml(dados.trainerName)}</strong>! O atleta <strong>${escapeHtml(dados.athleteName)}</strong>
+            acaba de concluir todas as sessões do plano:
+          </p>
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="margin: 0; color: #166534; font-size: 14px; font-weight: 600;">📋 ${escapeHtml(dados.planTitle)}</p>
+          </div>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${base}/dashboard/students"
+               style="background: #16a34a; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
+              Ver Atletas →
+            </a>
+          </div>
+        `),
+      });
+    } catch (erro) {
+      this.logger.warn(
+        `Falha ao enviar conclusão do plano para ${dados.trainerEmail}: ${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+    }
+  }
 }
