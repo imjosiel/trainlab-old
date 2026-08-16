@@ -198,14 +198,22 @@ export class B2BWebhookService {
    * customer.subscription.*
    * ──────────────────────────────────────────────────────────────────────── */
 
+  /**
+   * A86 — o `status` usado aqui vem de `stripe.recuperarAssinatura()`, uma
+   * releitura na Stripe, NUNCA do `subscription.status` do payload do
+   * evento. `created` e `updated` não chegam em ordem garantida, e o payload
+   * de cada um é só um retrato — pode estar desatualizado mesmo tendo
+   * acabado de chegar. Ver stripe.service.ts para a explicação completa.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async handleSubscriptionUpdate(subscription: any): Promise<void> {
     const sub = await this.prisma.partnerSubscription.findUnique({ where: { stripeSubscriptionId: subscription.id } });
     if (!sub) return;
 
-    const cancelAtEnd = subscription.cancel_at_period_end;
-    const preservaCanceling = sub.status === 'canceling' && subscription.status === 'active' && cancelAtEnd;
-    const novoStatus = preservaCanceling ? 'canceling' : subscription.status;
+    const atual = await this.stripe.recuperarAssinatura(subscription.id);
+
+    const preservaCanceling = sub.status === 'canceling' && atual.status === 'active' && atual.cancelAtPeriodEnd;
+    const novoStatus = preservaCanceling ? 'canceling' : atual.status;
 
     await this.prisma.partnerSubscription.update({
       where: { stripeSubscriptionId: subscription.id },

@@ -18,6 +18,7 @@ function stripeMock() {
   return {
     verificarAssinatura: jest.fn(),
     cancelarAssinatura: jest.fn().mockResolvedValue(undefined),
+    recuperarAssinatura: jest.fn(),
   };
 }
 
@@ -234,26 +235,33 @@ describe('B2BWebhookService', () => {
    * ────────────────────────────────────────────────────────────────────────── */
 
   describe('customer.subscription.updated', () => {
-    it('preserva canceling quando o Stripe manda active+cancelAtPeriodEnd', async () => {
+    // A86 — o status vem de uma RELEITURA na Stripe (`recuperarAssinatura`),
+    // não do campo `status` do payload do evento. O payload continua
+    // existindo (é dele que sai o `id`), mas o retrato que ele carrega pode
+    // estar desatualizado — ver descrição completa no describe do A86 abaixo.
+    it('preserva canceling quando a Stripe confirma active+cancelAtPeriodEnd', async () => {
       stripe.verificarAssinatura.mockReturnValue({
         id: 'evt_3', type: 'customer.subscription.updated',
         data: { object: { id: 'sub_stripe_1', status: 'active', cancel_at_period_end: true } },
       });
       prisma.partnerSubscription.findUnique.mockResolvedValue({ id: 'sub-1', status: 'canceling' });
+      stripe.recuperarAssinatura.mockResolvedValue({ status: 'active', cancelAtPeriodEnd: true });
 
       await service.processarWebhook('corpo', 'sig');
 
+      expect(stripe.recuperarAssinatura).toHaveBeenCalledWith('sub_stripe_1');
       expect(prisma.partnerSubscription.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'canceling' } }),
       );
     });
 
-    it('[controle] sem cancelAtPeriodEnd, aplica o status do Stripe direto', async () => {
+    it('[controle] sem cancelAtPeriodEnd, aplica o status que a Stripe confirmou', async () => {
       stripe.verificarAssinatura.mockReturnValue({
         id: 'evt_4', type: 'customer.subscription.updated',
         data: { object: { id: 'sub_stripe_1', status: 'past_due', cancel_at_period_end: false } },
       });
       prisma.partnerSubscription.findUnique.mockResolvedValue({ id: 'sub-1', status: 'active' });
+      stripe.recuperarAssinatura.mockResolvedValue({ status: 'past_due', cancelAtPeriodEnd: false });
 
       await service.processarWebhook('corpo', 'sig');
 
@@ -262,7 +270,7 @@ describe('B2BWebhookService', () => {
       );
     });
 
-    it('assinatura desconhecida (sem PartnerSubscription local) é ignorada', async () => {
+    it('assinatura desconhecida (sem PartnerSubscription local) é ignorada, sem nem perguntar pra Stripe', async () => {
       stripe.verificarAssinatura.mockReturnValue({
         id: 'evt_5', type: 'customer.subscription.updated',
         data: { object: { id: 'sub_desconhecida', status: 'active', cancel_at_period_end: false } },
@@ -270,7 +278,56 @@ describe('B2BWebhookService', () => {
       prisma.partnerSubscription.findUnique.mockResolvedValue(null);
 
       await expect(service.processarWebhook('corpo', 'sig')).resolves.toBeDefined();
+      expect(stripe.recuperarAssinatura).not.toHaveBeenCalled();
       expect(prisma.partnerSubscription.update).not.toHaveBeenCalled();
+    });
+  });
+
+  /* ──────────────────────────────────────────────────────────────────────────
+   * A86 — achado ao testar um checkout real: `customer.subscription.created` e
+   * `customer.subscription.updated` chegaram no MESMO segundo, mas em ordem
+   * trocada. O `created` carrega o retrato de ANTES do pagamento confirmar
+   * (`incomplete`) — e chegou DEPOIS do `updated`, que já tinha `active`. O
+   * Stripe não garante ordem de entrega entre eventos diferentes do mesmo
+   * objeto, e o handler antigo confiava cegamente em quem chegasse por
+   * último. Resultado real, reproduzido: banco ficava `incomplete` para uma
+   * assinatura que a própria Stripe já mostrava `active`.
+   *
+   * Correção: religa para a Stripe e usa o status ATUAL, não o do payload.
+   * Elimina a corrida em vez de tentar ordená-la — não depende de comparar
+   * timestamps (que no Stripe só têm resolução de segundo, e podem empatar,
+   * como empataram aqui).
+   * ────────────────────────────────────────────────────────────────────────── */
+  describe('customer.subscription.created/updated fora de ordem (A86)', () => {
+    it('created chega depois do updated, com status desatualizado → usa o estado real da Stripe', async () => {
+      stripe.verificarAssinatura.mockReturnValue({
+        id: 'evt_14', type: 'customer.subscription.created',
+        data: { object: { id: 'sub_stripe_1', status: 'incomplete', cancel_at_period_end: false } },
+      });
+      prisma.partnerSubscription.findUnique.mockResolvedValue({ id: 'sub-1', status: 'active' });
+      stripe.recuperarAssinatura.mockResolvedValue({ status: 'active', cancelAtPeriodEnd: false });
+
+      await service.processarWebhook('corpo', 'sig');
+
+      expect(stripe.recuperarAssinatura).toHaveBeenCalledWith('sub_stripe_1');
+      expect(prisma.partnerSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'active' } }),
+      );
+    });
+
+    it('[controle] created chega primeiro, sem corrida → aplica o que a Stripe confirma', async () => {
+      stripe.verificarAssinatura.mockReturnValue({
+        id: 'evt_15', type: 'customer.subscription.created',
+        data: { object: { id: 'sub_stripe_1', status: 'incomplete', cancel_at_period_end: false } },
+      });
+      prisma.partnerSubscription.findUnique.mockResolvedValue({ id: 'sub-1', status: 'incomplete' });
+      stripe.recuperarAssinatura.mockResolvedValue({ status: 'incomplete', cancelAtPeriodEnd: false });
+
+      await service.processarWebhook('corpo', 'sig');
+
+      expect(prisma.partnerSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'incomplete' } }),
+      );
     });
   });
 

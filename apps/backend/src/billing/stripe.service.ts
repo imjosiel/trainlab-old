@@ -22,6 +22,11 @@ export interface SessaoDeCheckout {
   clientSecret: string | null;
 }
 
+export interface AssinaturaStripe {
+  status: string;
+  cancelAtPeriodEnd: boolean;
+}
+
 export interface SessaoDeCheckoutRecuperada {
   id: string;
   paymentStatus: string;
@@ -143,6 +148,25 @@ export class StripeService {
         cancel_at_period_end: dados.cancelAtPeriodEnd,
       });
     }
+  }
+
+  /**
+   * A86 — releitura deliberada, não cache do payload do webhook.
+   *
+   * `customer.subscription.created` e `.updated` são eventos DIFERENTES, e o
+   * Stripe não garante ordem de entrega entre eles. Um `created` (retrato de
+   * antes do pagamento confirmar, `status: 'incomplete'`) pode chegar DEPOIS
+   * de um `updated` já `active` — reproduzido de verdade num checkout local.
+   * Confiar no `status` de qualquer um dos dois payloads é confiar em quem
+   * chegou por último, não em quem está certo.
+   *
+   * Perguntar direto pra Stripe elimina a corrida em vez de tentar ordená-la:
+   * não depende de comparar timestamp (que só tem resolução de segundo, e os
+   * dois eventos podem cair no mesmo segundo — foi o que aconteceu aqui).
+   */
+  async recuperarAssinatura(stripeSubscriptionId: string): Promise<AssinaturaStripe> {
+    const assinatura = await this.sdk().subscriptions.retrieve(stripeSubscriptionId);
+    return { status: assinatura.status, cancelAtPeriodEnd: assinatura.cancel_at_period_end };
   }
 
   async encontrarOuCriarCliente(email: string, nome?: string | null): Promise<ClienteStripe> {

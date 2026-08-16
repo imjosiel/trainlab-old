@@ -612,7 +612,52 @@ criação de produto no Stripe a cada chamada, sem limite, é superfície real.
 Registrado para fatia própria de infraestrutura (limitador compartilhado no
 backend), não para esta.
 
+### A86 — `customer.subscription.created` e `.updated` fora de ordem sobrescreviam o status certo com um velho
+
+Achado testando um checkout real de ponta a ponta (conta Connect de teste,
+oferta paga, Embedded Checkout, cartão `4242...`), não em teste sintético.
+
+A Stripe entregou quatro eventos da mesma assinatura, todos no mesmo segundo:
+
+```
+checkout.session.completed              → cria a linha com status 'active'
+customer.subscription.updated  (active) → confirma 'active'
+customer.subscription.created  (incomplete) → SOBRESCREVE para 'incomplete'
+invoice.payment_succeeded               → não mexe em status
+```
+
+`customer.subscription.created` carrega o retrato de ANTES do pagamento
+confirmar — é assim que a Stripe gera o evento quando a assinatura nasce em
+`payment_behavior: default_incomplete`. O Stripe **não garante ordem de
+entrega** entre eventos diferentes do mesmo objeto, e `handleSubscriptionUpdate`
+confiava cegamente no `subscription.status` de qualquer payload que chegasse
+por último — nesse caso, o mais velho ganhou por ter chegado depois.
+
+Resultado real, confirmado direto na API da Stripe: `sub_1U55CQ...` estava
+`active` na Stripe, `incomplete` no nosso banco. Um cliente cobrado de verdade
+veria a própria assinatura como pendente, possivelmente para sempre — nenhum
+evento futuro corrigiria sozinho, porque nada re-dispara `created`.
+
+**D82 — comparar timestamp do evento foi cogitado e descartado.** `created` do
+Stripe só tem resolução de segundo, e os quatro eventos deste caso caíram no
+mesmo segundo — um desempate por timestamp não teria decidido nada aqui.
+Optamos por eliminar a corrida em vez de tentar ordená-la: `handleSubscriptionUpdate`
+agora ignora o `status` do payload e chama `stripe.recuperarAssinatura()` —
+uma releitura direta na Stripe — para decidir o status a gravar. Custo: uma
+chamada de API a mais por evento de assinatura (não por webhook em geral).
+Sem risco de limite de taxa nesse volume (Stripe permite ~100 req/s; este
+endpoint só é chamado em mudança de assinatura, não em polling), e falha de
+rede já tem rede de segurança pronta — o claim é liberado (D75) e a Stripe
+reentrega.
+
+Corrigido com TDD: dois testes vermelhos reproduzindo a corrida (`created`
+chegando depois do `updated`, com `stripe.recuperarAssinatura` mockado
+divergindo do payload), implementação, depois **verificado contra o evento
+real** — reenviei `evt_1U55CUCnRjvq6zNu682rXkAY` (o mesmo que causou o bug,
+via `stripe events resend`) contra o backend corrigido e confirmei no banco:
+`status` virou `active`, batendo com a Stripe.
+
 ### Suítes finais
 
-Backend: **601** unitários (+4 do A84, achado durante o cutover) + **231** e2e.
+Backend: **603** unitários (+4 do A84, +2 do A86) + **231** e2e.
 Web: **183** Jest + 65 Vitest.
