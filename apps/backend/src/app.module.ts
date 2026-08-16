@@ -16,6 +16,7 @@ import { PartnerTiersModule } from '@/partner-tiers/partner-tiers.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { SportsModule } from '@/sports/sports.module';
+import { StudentsModule } from '@/students/students.module';
 import { UsersModule } from '@/users/users.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { UsersModule } from '@/users/users.module';
     PartnerTiersModule,
     BillingModule,
     UsersModule,
+    StudentsModule,
   ],
   controllers: [HealthController, MeController],
   providers: [
