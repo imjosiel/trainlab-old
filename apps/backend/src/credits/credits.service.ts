@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 
 import { ROLES } from '@/common/constants';
 import { SessionPayload } from '@/auth/session-payload';
 import { PrismaService } from '@/prisma/prisma.service';
+import { StripeService } from '@/billing/stripe.service';
+
+export interface CheckoutCreditosBody {
+  packageId?: string;
+  currency?: 'brl' | 'usd';
+}
 
 export interface SpendCreditsInput {
   userId: string;
@@ -67,7 +73,53 @@ function precisaResetar(lastResetAt: Date | null | undefined, period: PeriodoDeR
  */
 @Injectable()
 export class CreditsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stripe: StripeService,
+  ) {}
+
+  /**
+   * Fatia 19 — porte de `stripe/checkout-credits/route.ts`. Não depende do
+   * webhook: só cria a sessão e devolve a URL. A concessão dos créditos
+   * (handler `credit_purchase`) continua no webhook legado (ver spec).
+   */
+  async criarCheckout(user: SessionPayload, body: CheckoutCreditosBody): Promise<{ url: string | null }> {
+    const { packageId, currency = 'brl' } = body;
+    if (!packageId) throw new BadRequestException({ error: 'packageId é obrigatório.' });
+
+    const settings = await this.prisma.systemSettings.findFirst({ select: { enableCreditSystem: true } });
+    if (!settings?.enableCreditSystem) throw new ForbiddenException({ error: 'Sistema de créditos desativado.' });
+
+    const pkg = await this.prisma.creditPackage.findFirst({
+      where: { id: packageId, isActive: true },
+      select: { id: true, name: true, credits: true, price: true, priceUsd: true },
+    });
+    if (!pkg) throw new NotFoundException({ error: 'Pacote não encontrado ou inativo.' });
+
+    const baseUrl = process.env.NEXTAUTH_URL ?? '';
+    if (!baseUrl) {
+      throw new InternalServerErrorException({ error: 'Configuração do servidor incompleta. Contate o suporte.' });
+    }
+
+    // D92 — direto do SessionPayload (já carrega o JWT): sem consultar
+    // User.subscription, que é a relação SaaS/B2C que o D83/D87 já decidiram
+    // não portar.
+    const unitPrice = currency === 'usd' && pkg.priceUsd ? pkg.priceUsd : pkg.price;
+
+    const sessao = await this.stripe.criarSessaoDeCheckoutDeCreditos({
+      customerId: user.stripeCustomerId ?? undefined,
+      customerEmail: user.stripeCustomerId ? undefined : (user.email ?? undefined),
+      successUrl: `${baseUrl}/dashboard/credits?success=1`,
+      cancelUrl: `${baseUrl}/dashboard/credits?canceled=1`,
+      currency,
+      productName: pkg.name,
+      productDescription: `${pkg.credits.toLocaleString(currency === 'brl' ? 'pt-BR' : 'en-US')} créditos Player.Action`,
+      unitAmountEmCentavos: Math.round(unitPrice * 100),
+      metadata: { type: 'credit_purchase', userId: user.id, packageId: pkg.id, credits: String(pkg.credits) },
+    });
+
+    return { url: sessao.url };
+  }
 
   async verSaldo(user: SessionPayload): Promise<unknown> {
     const isTrainer = (user.roles ?? []).includes(ROLES.PROFESSIONAL);

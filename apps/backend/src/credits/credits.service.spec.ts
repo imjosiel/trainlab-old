@@ -9,13 +9,19 @@ function prismaMock() {
     user: { findUnique: jest.fn() },
     userCredits: { findUnique: jest.fn(), upsert: jest.fn(), updateMany: jest.fn() },
     creditTransaction: { findMany: jest.fn(), create: jest.fn() },
-    creditPackage: { findMany: jest.fn() },
+    creditPackage: { findMany: jest.fn(), findFirst: jest.fn() },
     partnerAccount: { findUnique: jest.fn() },
     $transaction: jest.fn(async (ops: unknown[]) => Promise.all(ops)),
   };
 }
 
 type PrismaMock = ReturnType<typeof prismaMock>;
+
+function stripeMock() {
+  return {
+    criarSessaoDeCheckoutDeCreditos: jest.fn().mockResolvedValue({ id: 'cs_1', url: 'https://checkout.stripe.com/cs_1' }),
+  };
+}
 
 async function bodyOfRejection(promise: Promise<unknown>): Promise<Record<string, unknown>> {
   try {
@@ -49,12 +55,14 @@ const SETTINGS_LIGADO = { enableCreditSystem: true, creditCostPlanGen: 10, credi
 
 describe('CreditsService', () => {
   let prisma: PrismaMock;
+  let stripe: ReturnType<typeof stripeMock>;
   let service: CreditsService;
 
   beforeEach(() => {
     prisma = prismaMock();
+    stripe = stripeMock();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new CreditsService(prisma as any);
+    service = new CreditsService(prisma as any, stripe as any);
 
     prisma.systemSettings.findFirst.mockResolvedValue(SETTINGS_LIGADO);
     prisma.user.findUnique.mockResolvedValue({ id: EU, roles: ['PROFESSIONAL'], subscription: null });
@@ -305,6 +313,108 @@ describe('CreditsService', () => {
       prisma.userCredits.upsert.mockResolvedValue({ planCredits: 150, purchasedCredits: 20 });
       const r = await service.conceder({ userId: 'user-alvo', amount: 50 });
       expect(r).toEqual({ newBalance: 170, planCredits: 150, purchasedCredits: 20 });
+    });
+  });
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * criarCheckout — POST /stripe/checkout-credits (fatia 19)
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  describe('criarCheckout', () => {
+    const PACOTE = { id: 'pkg-1', name: 'Pacote Básico', credits: 100, price: 19.9, priceUsd: null, stripePriceId: null };
+
+    const NEXTAUTH_URL_ORIGINAL = process.env.NEXTAUTH_URL;
+
+    beforeEach(() => {
+      process.env.NEXTAUTH_URL = 'https://app.example.com';
+      prisma.creditPackage.findFirst.mockResolvedValue(PACOTE);
+    });
+
+    afterEach(() => {
+      if (NEXTAUTH_URL_ORIGINAL === undefined) delete process.env.NEXTAUTH_URL;
+      else process.env.NEXTAUTH_URL = NEXTAUTH_URL_ORIGINAL;
+    });
+
+    it('sem packageId → 400', async () => {
+      const body = await bodyOfRejection(service.criarCheckout(sessao(), {}));
+      expect(body).toEqual({ error: 'packageId é obrigatório.' });
+    });
+
+    it('sistema de créditos desligado → 403', async () => {
+      prisma.systemSettings.findFirst.mockResolvedValue({ enableCreditSystem: false });
+      const body = await bodyOfRejection(service.criarCheckout(sessao(), { packageId: 'pkg-1' }));
+      expect(body).toEqual({ error: 'Sistema de créditos desativado.' });
+    });
+
+    it('pacote não encontrado ou inativo → 404', async () => {
+      prisma.creditPackage.findFirst.mockResolvedValue(null);
+      const body = await bodyOfRejection(service.criarCheckout(sessao(), { packageId: 'pkg-x' }));
+      expect(body).toEqual({ error: 'Pacote não encontrado ou inativo.' });
+    });
+
+    it('busca o pacote com isActive:true explícito no where (não filtro pós-leitura)', async () => {
+      await service.criarCheckout(sessao(), { packageId: 'pkg-1' });
+      expect(prisma.creditPackage.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'pkg-1', isActive: true } }),
+      );
+    });
+
+    it('sem NEXTAUTH_URL configurado → 500, sem tentar criar sessão na Stripe', async () => {
+      delete process.env.NEXTAUTH_URL;
+      const body = await bodyOfRejection(service.criarCheckout(sessao(), { packageId: 'pkg-1' }));
+      expect(body).toEqual({ error: 'Configuração do servidor incompleta. Contate o suporte.' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).not.toHaveBeenCalled();
+    });
+
+    it('moeda BRL usa o price padrão', async () => {
+      await service.criarCheckout(sessao(), { packageId: 'pkg-1', currency: 'brl' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({ unitAmountEmCentavos: 1990 }),
+      );
+    });
+
+    it('moeda USD com priceUsd configurado usa priceUsd', async () => {
+      prisma.creditPackage.findFirst.mockResolvedValue({ ...PACOTE, priceUsd: 4.99 });
+      await service.criarCheckout(sessao(), { packageId: 'pkg-1', currency: 'usd' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({ unitAmountEmCentavos: 499 }),
+      );
+    });
+
+    it('[controle] moeda USD sem priceUsd configurado cai pro price (BRL) como fallback', async () => {
+      await service.criarCheckout(sessao(), { packageId: 'pkg-1', currency: 'usd' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({ unitAmountEmCentavos: 1990 }),
+      );
+    });
+
+    it('D92: usa stripeCustomerId da sessão quando disponível, sem consultar User.subscription', async () => {
+      await service.criarCheckout(sessao({ stripeCustomerId: 'cus_existente' }), { packageId: 'pkg-1' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({ customerId: 'cus_existente' }),
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('sem stripeCustomerId, usa o email do usuário', async () => {
+      await service.criarCheckout(sessao({ stripeCustomerId: null, email: 'aluno@example.com' }), { packageId: 'pkg-1' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({ customerId: undefined, customerEmail: 'aluno@example.com' }),
+      );
+    });
+
+    it('metadata identifica o tipo, o comprador, o pacote e a quantidade de créditos', async () => {
+      await service.criarCheckout(sessao(), { packageId: 'pkg-1' });
+      expect(stripe.criarSessaoDeCheckoutDeCreditos).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: { type: 'credit_purchase', userId: EU, packageId: 'pkg-1', credits: '100' },
+        }),
+      );
+    });
+
+    it('devolve a url da sessão criada', async () => {
+      const r = await service.criarCheckout(sessao(), { packageId: 'pkg-1' });
+      expect(r).toEqual({ url: 'https://checkout.stripe.com/cs_1' });
     });
   });
 });

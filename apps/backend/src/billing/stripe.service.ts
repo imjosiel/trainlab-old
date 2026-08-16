@@ -27,6 +27,11 @@ export interface AssinaturaStripe {
   cancelAtPeriodEnd: boolean;
 }
 
+export interface SessaoDeCheckoutDeCreditos {
+  id: string;
+  url: string | null;
+}
+
 export interface SessaoDeCheckoutRecuperada {
   id: string;
   paymentStatus: string;
@@ -252,6 +257,43 @@ export class StripeService {
     });
 
     return { id: sessao.id, clientSecret: sessao.client_secret };
+  }
+
+  /**
+   * D93 (fatia 19) — pagamento único, hospedado (não embedded como o de
+   * assinatura): sem parceiro, sem comissão, é a plataforma vendendo direto.
+   */
+  async criarSessaoDeCheckoutDeCreditos(dados: {
+    customerId?: string;
+    customerEmail?: string;
+    successUrl: string;
+    cancelUrl: string;
+    currency: 'brl' | 'usd';
+    productName: string;
+    productDescription: string;
+    unitAmountEmCentavos: number;
+    metadata: Record<string, string>;
+  }): Promise<SessaoDeCheckoutDeCreditos> {
+    const sessao = await this.sdk().checkout.sessions.create({
+      mode: 'payment',
+      customer: dados.customerId,
+      customer_email: dados.customerId ? undefined : dados.customerEmail,
+      line_items: [
+        {
+          price_data: {
+            currency: dados.currency,
+            product_data: { name: dados.productName, description: dados.productDescription },
+            unit_amount: dados.unitAmountEmCentavos,
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: dados.metadata,
+      success_url: dados.successUrl,
+      cancel_url: dados.cancelUrl,
+    });
+
+    return { id: sessao.id, url: sessao.url };
   }
 
   async recuperarSessaoDeCheckout(sessionId: string): Promise<SessaoDeCheckoutRecuperada> {
