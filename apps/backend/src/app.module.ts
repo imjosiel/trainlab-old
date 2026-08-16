@@ -9,6 +9,7 @@ import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
 import { RolesGuard } from '@/auth/roles.guard';
 import { AppointmentsModule } from '@/appointments/appointments.module';
 import { BillingModule } from '@/billing/billing.module';
+import { CreditsModule } from '@/credits/credits.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
@@ -35,6 +36,7 @@ import { UsersModule } from '@/users/users.module';
     BillingModule,
     UsersModule,
     StudentsModule,
+    CreditsModule,
   ],
   controllers: [HealthController, MeController],
   providers: [

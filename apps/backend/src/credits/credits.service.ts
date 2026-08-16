@@ -1,0 +1,306 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+
+import { ROLES } from '@/common/constants';
+import { SessionPayload } from '@/auth/session-payload';
+import { PrismaService } from '@/prisma/prisma.service';
+
+export interface SpendCreditsInput {
+  userId: string;
+  cost: number;
+  feature: string;
+  description?: string;
+}
+
+export interface SpendCreditsResult {
+  success: boolean;
+  error?: string;
+  newBalance?: number;
+  planCredits?: number;
+  purchasedCredits?: number;
+}
+
+export interface GrantCreditsInput {
+  userId: string;
+  amount: number;
+  grantedById?: string | null;
+  description?: string;
+  bucket?: 'plan' | 'purchased';
+}
+
+export interface CreditBalanceResult {
+  newBalance: number;
+  planCredits: number;
+  purchasedCredits: number;
+}
+
+type PeriodoDeReset = 'daily' | 'weekly' | 'monthly' | 'never' | null | undefined;
+
+function totalBalance(user: { planCredits?: number | null; purchasedCredits?: number | null }): number {
+  return (user.planCredits ?? 0) + (user.purchasedCredits ?? 0);
+}
+
+function precisaResetar(lastResetAt: Date | null | undefined, period: PeriodoDeReset): boolean {
+  if (!lastResetAt || !period || period === 'never') return false;
+  const now = new Date();
+  const last = new Date(lastResetAt);
+  switch (period) {
+    case 'daily':
+      return now.getTime() - last.getTime() >= 86_400_000;
+    case 'weekly':
+      return now.getTime() - last.getTime() >= 7 * 86_400_000;
+    case 'monthly':
+      return (
+        now.getFullYear() > last.getFullYear() ||
+        (now.getFullYear() === last.getFullYear() && now.getMonth() > last.getMonth())
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Fatia 17 — porte de `apps/web/lib/credits.ts`.
+ *
+ * `spendCredits`/`checkAndResetCredits` do legado viram `gastar`/o reset
+ * embutido em `verSaldo`. `addPurchasedCredits` NÃO entra aqui — só tem
+ * chamador no webhook compartilhado, fora do escopo desta fatia (ver spec).
+ */
+@Injectable()
+export class CreditsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async verSaldo(user: SessionPayload): Promise<unknown> {
+    const isTrainer = (user.roles ?? []).includes(ROLES.PROFESSIONAL);
+    if (!isTrainer) return { enabled: false };
+
+    const settings = await this.prisma.systemSettings.findFirst({
+      select: { enableCreditSystem: true, creditCostPlanGen: true, creditCostAiVideo: true },
+    });
+    if (!settings?.enableCreditSystem) return { enabled: false };
+
+    const dbUser = await this.prisma.user.findUnique({ where: { id: user.id }, select: { id: true } });
+    if (!dbUser) throw new NotFoundException({ error: 'Usuário não encontrado.' });
+
+    // D87 — reset periódico só pelo caminho Partner/B2B (mesma decisão do D83).
+    await this.resetarSeVencido(user.id);
+
+    const credits = await this.prisma.userCredits.findUnique({
+      where: { userId: user.id },
+      select: { planCredits: true, purchasedCredits: true, lastResetAt: true },
+    });
+
+    const transactions = await this.prisma.creditTransaction.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        type: true,
+        bucket: true,
+        amount: true,
+        balanceAfter: true,
+        feature: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    const planCredits = credits?.planCredits ?? 0;
+    const purchasedCredits = credits?.purchasedCredits ?? 0;
+
+    return {
+      enabled: true,
+      planCredits,
+      purchasedCredits,
+      totalCredits: planCredits + purchasedCredits,
+      lastResetAt: credits?.lastResetAt ?? null,
+      costs: { planGen: settings.creditCostPlanGen, aiVideo: settings.creditCostAiVideo },
+      transactions,
+    };
+  }
+
+  async listarPacotesPublicos(): Promise<unknown> {
+    const settings = await this.prisma.systemSettings.findFirst({ select: { enableCreditSystem: true } });
+    if (!settings?.enableCreditSystem) return { packages: [] };
+
+    const packages = await this.prisma.creditPackage.findMany({
+      where: { isActive: true },
+      orderBy: { credits: 'asc' },
+      select: { id: true, name: true, credits: true, price: true, priceUsd: true, stripePriceId: true },
+    });
+    return { packages };
+  }
+
+  /**
+   * D88 — sem chamador nesta fatia (é `training-plans`, que ainda não
+   * migrou). Entra como preparo: quando `training-plans` migrar, o débito
+   * já existe, testado.
+   */
+  async gastar({ userId, cost, feature, description }: SpendCreditsInput): Promise<SpendCreditsResult> {
+    const settings = await this.prisma.systemSettings.findFirst();
+    if (!settings?.enableCreditSystem) return { success: true };
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { roles: true } });
+    if (!user) return { success: false, error: 'Usuário não encontrado.' };
+
+    const isTrainer = (user.roles ?? []).includes(ROLES.PROFESSIONAL);
+    if (!isTrainer) return { success: true };
+
+    const credits = await this.prisma.userCredits.findUnique({
+      where: { userId },
+      select: { planCredits: true, purchasedCredits: true },
+    });
+    const plan = credits?.planCredits ?? 0;
+    const purchased = credits?.purchasedCredits ?? 0;
+    const available = plan + purchased;
+
+    if (available < cost) {
+      return { success: false, error: `Créditos insuficientes. Necessário: ${cost}, disponível: ${available}.` };
+    }
+
+    const debitFromPlan = Math.min(cost, plan);
+    const debitFromPurchased = cost - debitFromPlan;
+
+    const newPlan = plan - debitFromPlan;
+    const newPurchased = purchased - debitFromPurchased;
+    const newTotal = newPlan + newPurchased;
+
+    // Trava atômica: o updateMany só sucede se os saldos ainda são suficientes.
+    const guardResult = await this.prisma.userCredits.updateMany({
+      where: { userId, planCredits: { gte: debitFromPlan }, purchasedCredits: { gte: debitFromPurchased } },
+      data: { planCredits: newPlan, purchasedCredits: newPurchased },
+    });
+
+    if (guardResult.count === 0) {
+      return { success: false, error: 'Créditos insuficientes (conflito de concorrência). Tente novamente.' };
+    }
+
+    const desc = description || feature;
+    const auditOps =
+      debitFromPlan > 0 && debitFromPurchased > 0
+        ? [
+            this.prisma.creditTransaction.create({
+              data: {
+                userId,
+                type: 'SPEND',
+                bucket: 'plan',
+                amount: -debitFromPlan,
+                balanceAfter: newPlan + purchased,
+                feature,
+                description: `${desc} (parte plano)`,
+              },
+            }),
+            this.prisma.creditTransaction.create({
+              data: {
+                userId,
+                type: 'SPEND',
+                bucket: 'purchased',
+                amount: -debitFromPurchased,
+                balanceAfter: newTotal,
+                feature,
+                description: `${desc} (parte comprados)`,
+              },
+            }),
+          ]
+        : [
+            this.prisma.creditTransaction.create({
+              data: {
+                userId,
+                type: 'SPEND',
+                bucket: debitFromPlan > 0 ? 'plan' : 'purchased',
+                amount: -cost,
+                balanceAfter: newTotal,
+                feature,
+                description: desc,
+              },
+            }),
+          ];
+
+    // Auditoria não-crítica: o débito já foi aplicado pelo updateMany acima.
+    await this.prisma.$transaction(auditOps).catch((e: Error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[CreditsService.gastar] Falha ao registrar auditoria (débito já aplicado):', e.message);
+    });
+
+    return { success: true, newBalance: newTotal, planCredits: newPlan, purchasedCredits: newPurchased };
+  }
+
+  async conceder({ userId, amount, grantedById, description, bucket = 'plan' }: GrantCreditsInput): Promise<CreditBalanceResult> {
+    const existe = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!existe) throw new NotFoundException({ error: 'Usuário não encontrado.' });
+
+    const updated = await this.prisma.userCredits.upsert({
+      where: { userId },
+      create: {
+        userId,
+        planCredits: bucket === 'plan' ? amount : 0,
+        purchasedCredits: bucket === 'purchased' ? amount : 0,
+      },
+      update:
+        bucket === 'plan' ? { planCredits: { increment: amount } } : { purchasedCredits: { increment: amount } },
+    });
+
+    const newPlan = updated.planCredits;
+    const newPurchased = updated.purchasedCredits;
+    const newTotal = newPlan + newPurchased;
+
+    await this.prisma.creditTransaction.create({
+      data: {
+        userId,
+        type: 'GRANT',
+        bucket,
+        amount,
+        balanceAfter: newTotal,
+        grantedById: grantedById ?? null,
+        description: description ?? `Concessão manual — bucket ${bucket}`,
+      },
+    });
+
+    return { newBalance: newTotal, planCredits: newPlan, purchasedCredits: newPurchased };
+  }
+
+  /** D87 — só o caminho Partner/B2B. Sem PartnerAccount, ou tier sem `creditsPerPeriod`, não reseta nada. */
+  private async resetarSeVencido(userId: string): Promise<void> {
+    const partnerAccount = await this.prisma.partnerAccount.findUnique({
+      where: { userId },
+      select: { tier: { select: { creditsPerPeriod: true, creditResetPeriod: true } } },
+    });
+
+    const period = partnerAccount?.tier?.creditResetPeriod as PeriodoDeReset;
+    const amount = partnerAccount?.tier?.creditsPerPeriod ?? null;
+    if (!period || !amount) return;
+
+    const credits = await this.prisma.userCredits.findUnique({
+      where: { userId },
+      select: { planCredits: true, purchasedCredits: true, lastResetAt: true },
+    });
+
+    const needsInitialGrant = !credits?.lastResetAt;
+    const needsReset = precisaResetar(credits?.lastResetAt, period);
+    if (!needsInitialGrant && !needsReset) return;
+
+    const prevPlan = credits?.planCredits ?? 0;
+    const purchased = credits?.purchasedCredits ?? 0;
+    const newTotal = amount + purchased;
+
+    await this.prisma.$transaction([
+      this.prisma.userCredits.upsert({
+        where: { userId },
+        create: { userId, planCredits: amount, lastResetAt: new Date() },
+        update: { planCredits: amount, lastResetAt: new Date() },
+      }),
+      this.prisma.creditTransaction.create({
+        data: {
+          userId,
+          type: 'RESET',
+          bucket: 'plan',
+          amount: amount - prevPlan,
+          balanceAfter: newTotal,
+          description: needsInitialGrant ? 'Créditos iniciais do plano' : `Reset ${period} — planCredits → ${amount}`,
+        },
+      }),
+    ]);
+  }
+}
+
+export { totalBalance };
