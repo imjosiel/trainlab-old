@@ -317,6 +317,62 @@ describe('CreditsService', () => {
   });
 
   /* ────────────────────────────────────────────────────────────────────────
+   * registrarCompra — porte de addPurchasedCredits (fatia 20, chamado pelo webhook)
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  describe('registrarCompra', () => {
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-alvo' });
+      prisma.userCredits.upsert.mockResolvedValue({ planCredits: 0, purchasedCredits: 100 });
+    });
+
+    it('usuário inexistente → 404', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      const body = await bodyOfRejection(
+        service.registrarCompra({ userId: 'fantasma', amount: 100, packageId: 'pkg-1' }),
+      );
+      expect(body).toEqual({ error: 'Usuário não encontrado.' });
+    });
+
+    it('incrementa purchasedCredits via upsert atômico (nunca mexe em planCredits)', async () => {
+      await service.registrarCompra({ userId: 'user-alvo', amount: 100, packageId: 'pkg-1' });
+      expect(prisma.userCredits.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-alvo' },
+          create: { userId: 'user-alvo', purchasedCredits: 100 },
+          update: { purchasedCredits: { increment: 100 } },
+        }),
+      );
+    });
+
+    it('registra a transação tipo PURCHASE, bucket purchased, feature com o pacote', async () => {
+      await service.registrarCompra({ userId: 'user-alvo', amount: 100, packageId: 'pkg-1', description: 'Compra: Básico' });
+      expect(prisma.creditTransaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'PURCHASE',
+            bucket: 'purchased',
+            feature: 'package:pkg-1',
+            description: 'Compra: Básico',
+          }),
+        }),
+      );
+    });
+
+    it('[controle] sem packageId, feature fica null', async () => {
+      await service.registrarCompra({ userId: 'user-alvo', amount: 100 });
+      expect(prisma.creditTransaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ feature: null }) }),
+      );
+    });
+
+    it('devolve o saldo atualizado', async () => {
+      const r = await service.registrarCompra({ userId: 'user-alvo', amount: 100, packageId: 'pkg-1' });
+      expect(r).toEqual({ newBalance: 100, planCredits: 0, purchasedCredits: 100 });
+    });
+  });
+
+  /* ────────────────────────────────────────────────────────────────────────
    * criarCheckout — POST /stripe/checkout-credits (fatia 19)
    * ──────────────────────────────────────────────────────────────────────── */
 

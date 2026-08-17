@@ -48,7 +48,11 @@ export class B2BWebhookService {
   async processarWebhook(corpo: string, assinatura: string | null): Promise<ResultadoDoWebhook> {
     let event: EventoStripe;
     try {
-      event = this.stripe.verificarAssinatura(corpo, assinatura);
+      event = this.stripe.verificarAssinatura(
+        corpo,
+        assinatura,
+        process.env.STRIPE_WEBHOOK_SECRET_B2B ?? process.env.STRIPE_WEBHOOK_SECRET,
+      );
     } catch (erro) {
       throw new BadRequestException({
         error: `Webhook signature verification failed: ${erro instanceof Error ? erro.message : String(erro)}`,

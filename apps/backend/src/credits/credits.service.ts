@@ -10,6 +10,13 @@ export interface CheckoutCreditosBody {
   currency?: 'brl' | 'usd';
 }
 
+export interface RegistrarCompraInput {
+  userId: string;
+  amount: number;
+  description?: string;
+  packageId?: string | null;
+}
+
 export interface SpendCreditsInput {
   userId: string;
   cost: number;
@@ -77,6 +84,40 @@ export class CreditsService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
   ) {}
+
+  /**
+   * Fatia 20 — porte de `addPurchasedCredits` (lib/credits.ts). Chamado só
+   * pelo webhook, depois de confirmar o pagamento. `purchasedCredits` nunca
+   * reseta — diferente de `planCredits`, alocado pelo tier.
+   */
+  async registrarCompra({ userId, amount, description, packageId }: RegistrarCompraInput): Promise<CreditBalanceResult> {
+    const existe = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!existe) throw new NotFoundException({ error: 'Usuário não encontrado.' });
+
+    const updated = await this.prisma.userCredits.upsert({
+      where: { userId },
+      create: { userId, purchasedCredits: amount },
+      update: { purchasedCredits: { increment: amount } },
+    });
+
+    const newPlan = updated.planCredits;
+    const newPurchased = updated.purchasedCredits;
+    const newTotal = newPlan + newPurchased;
+
+    await this.prisma.creditTransaction.create({
+      data: {
+        userId,
+        type: 'PURCHASE',
+        bucket: 'purchased',
+        amount,
+        balanceAfter: newTotal,
+        description: description ?? `Compra de ${amount} créditos`,
+        feature: packageId ? `package:${packageId}` : null,
+      },
+    });
+
+    return { newBalance: newTotal, planCredits: newPlan, purchasedCredits: newPurchased };
+  }
 
   /**
    * Fatia 19 — porte de `stripe/checkout-credits/route.ts`. Não depende do

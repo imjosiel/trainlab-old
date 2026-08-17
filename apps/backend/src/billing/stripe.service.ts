@@ -93,13 +93,16 @@ export class StripeService {
   /**
    * Verifica a assinatura do webhook. Lança se o corpo não bate com o segredo.
    *
-   * Sem `try/catch` aqui de propósito: quem chama (`B2BWebhookService`) decide
-   * o que fazer com a falha — devolver 400 é responsabilidade do controller, não
-   * desta porta.
+   * Sem `try/catch` aqui de propósito: quem chama (`B2BWebhookService`,
+   * `CreditsWebhookService`) decide o que fazer com a falha — devolver 400 é
+   * responsabilidade do controller, não desta porta.
+   *
+   * O segredo é passado pelo chamador, não resolvido aqui (fatia 20): cada
+   * endpoint dedicado tem o próprio segredo de assinatura no Painel da
+   * Stripe, e esta porta não deveria saber quantos webhooks existem.
    */
-  verificarAssinatura(corpo: string, assinatura: string | null): EventoStripe {
-    const segredo = process.env.STRIPE_WEBHOOK_SECRET_B2B ?? process.env.STRIPE_WEBHOOK_SECRET;
-    if (!segredo) throw new Error('STRIPE_WEBHOOK_SECRET_B2B ausente.');
+  verificarAssinatura(corpo: string, assinatura: string | null, segredo: string | undefined): EventoStripe {
+    if (!segredo) throw new Error('Segredo de assinatura do webhook ausente.');
     if (!assinatura) throw new Error('Cabeçalho stripe-signature ausente.');
 
     const evento = this.sdk().webhooks.constructEvent(corpo, assinatura, segredo);
