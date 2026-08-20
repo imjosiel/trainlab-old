@@ -8,6 +8,8 @@ import { B2BWebhookController } from './b2b-webhook.controller';
 import { B2BWebhookService } from './b2b-webhook.service';
 import { OffersController, PublicOffersController } from './offers.controller';
 import { OffersService } from './offers.service';
+import { StripeCheckoutController } from './stripe-checkout.controller';
+import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeService } from './stripe.service';
 import {
   CheckoutController,
@@ -32,6 +34,7 @@ import { WebhookClaimService } from './webhook-claim.service';
     SubscribersController,
     AdminSubscriptionsController,
     B2BWebhookController,
+    StripeCheckoutController,
   ],
   providers: [
     WebhookClaimService,
@@ -41,6 +44,7 @@ import { WebhookClaimService } from './webhook-claim.service';
     SubscriptionsService,
     AdminSubscriptionsService,
     B2BWebhookService,
+    StripeCheckoutService,
   ],
   exports: [WebhookClaimService, AffiliateCommissionService, StripeService],
 })

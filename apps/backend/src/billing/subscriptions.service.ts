@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'crypto';
 
 import { SessionPayload } from '@/auth/session-payload';
+import { calcCommission, CommissionPolicy } from '@/common/commission';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { StripeService } from './stripe.service';
@@ -175,17 +176,37 @@ export class SubscriptionsService {
 
     const cliente = await this.stripe.encontrarOuCriarCliente(customerEmail, user?.name ?? null);
 
+    const settings = await this.prisma.systemSettings.findFirst({ select: { defaultCommissionRate: true } });
+    const financeSettings = await this.prisma.platformFinanceSettings.findFirst();
+
     const commissionRate =
-      offer.partner.customCommissionRate ?? offer.partner.tier?.commissionRate ?? offer.partner.commissionRate ?? 0.15;
+      offer.partner.customCommissionRate ??
+      offer.partner.tier?.commissionRate ??
+      offer.partner.commissionRate ??
+      settings?.defaultCommissionRate ??
+      0.15;
+    const policy = (offer.partner.tier?.hourlyRatePolicy as CommissionPolicy) ?? 'base_only';
+
+    // A89 — antes calculava um percentual puro e ignorava hourlyRate/policy,
+    // cobrando errado toda oferta com taxa por hora (ver epic-nest-stripe-checkout.md).
+    const { platformFeeCents, totalCents } = calcCommission({
+      basePrice: offer.price ?? 0,
+      hourlyRate: offer.hourlyRate ?? 0,
+      commissionRate,
+      policy,
+      stripePercentFee: financeSettings?.stripePercentFee,
+      stripeFixedFeeInCents: financeSettings?.stripeFixedFeeInCents,
+    });
+    const applicationFeePercent = totalCents > 0 ? (platformFeeCents / totalCents) * 100 : commissionRate * 100;
 
     const base = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? '';
     const sessao = await this.stripe.criarSessaoDeCheckoutAssinatura({
       customerId: cliente.id,
       returnUrl: `${base}/dashboard/billing?sub_success=true&session_id={CHECKOUT_SESSION_ID}&offer_id=${offerId}`,
-      priceAmountEmCentavos: Math.round(totalPrice * 100),
+      priceAmountEmCentavos: totalCents,
       productName: offer.name,
       destinoDaTransferencia: offer.partner.stripeAccountId,
-      percentualDeTaxa: Math.round(commissionRate * 100 * 100) / 100,
+      percentualDeTaxa: applicationFeePercent,
       metadata: {
         type: 'b2b_subscription',
         offerId: offer.id,

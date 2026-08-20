@@ -34,11 +34,21 @@ export interface SessaoDeCheckoutDeCreditos {
 
 export interface SessaoDeCheckoutRecuperada {
   id: string;
+  status: string | null;
   paymentStatus: string;
   metadata: Record<string, string>;
   subscriptionId: string | null;
   customerId: string | null;
   customerEmail: string | null;
+}
+
+export interface SessaoDeCheckoutRedirect {
+  id: string;
+  url: string | null;
+}
+
+export interface SessaoDoPortal {
+  url: string;
 }
 
 export interface ProdutoStripe {
@@ -318,6 +328,7 @@ export class StripeService {
 
     return {
       id: sessao.id,
+      status: sessao.status,
       paymentStatus: sessao.payment_status,
       metadata: (sessao.metadata ?? {}) as Record<string, string>,
       subscriptionId: sessao.subscription ? String(sessao.subscription) : null,
@@ -436,5 +447,93 @@ export class StripeService {
       chargesEnabled: conta.charges_enabled === true,
       disabledReason: conta.requirements?.disabled_reason ?? null,
     };
+  }
+
+  /**
+   * D100 (fatia 24) — modo redirect clássico, irmão de `criarSessaoDeCheckoutAssinatura`
+   * (que é `ui_mode: 'embedded'`). Usa um Stripe Price já existente em vez de
+   * `price_data` inline — quem chama decide o price, esta porta só cria a sessão.
+   */
+  async criarSessaoDeCheckoutRedirect(dados: {
+    customerId: string;
+    priceId: string;
+    successUrl: string;
+    cancelUrl: string;
+    destinoDaTransferencia?: string | null;
+    percentualDeTaxa?: number | null;
+    metadata: Record<string, string>;
+  }): Promise<SessaoDeCheckoutRedirect> {
+    const sessao = await this.sdk().checkout.sessions.create({
+      customer: dados.customerId,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: dados.priceId, quantity: 1 }],
+      success_url: dados.successUrl,
+      cancel_url: dados.cancelUrl,
+      subscription_data: {
+        metadata: dados.metadata,
+        ...(dados.destinoDaTransferencia
+          ? {
+              transfer_data: { destination: dados.destinoDaTransferencia },
+              ...(dados.percentualDeTaxa != null ? { application_fee_percent: dados.percentualDeTaxa } : {}),
+            }
+          : {}),
+      },
+      metadata: dados.metadata,
+    });
+    return { id: sessao.id, url: sessao.url };
+  }
+
+  /**
+   * D101 (fatia 24) — cria produto e preço juntos num único `prices.create`
+   * com `product_data`. Diferente do par `criarProduto`+`criarPreco` (dois
+   * `create()` separados, usado pelo fluxo de tiers gratuitos): esse formato
+   * é o que o legado de `checkout-partner-tier` usa, não generalizado com o
+   * par existente.
+   */
+  async criarPrecoComProduto(dados: {
+    unitAmountEmCentavos: number;
+    currency: 'brl' | 'usd';
+    productName: string;
+    metadata: Record<string, string>;
+  }): Promise<PrecoStripe> {
+    const preco = await this.sdk().prices.create({
+      unit_amount: dados.unitAmountEmCentavos,
+      currency: dados.currency,
+      recurring: { interval: 'month' },
+      product_data: { name: dados.productName, metadata: dados.metadata },
+    });
+    return { id: preco.id };
+  }
+
+  /** Busca um Price ativo já criado pra este tier+moeda+valor, pra não duplicar produto a cada checkout. */
+  async buscarPrecoExistenteDoTier(dados: {
+    tierId: string;
+    currency: 'brl' | 'usd';
+    unitAmountEmCentavos: number;
+  }): Promise<PrecoStripe | null> {
+    const produtos = await this.sdk()
+      .products.search({ query: `metadata['tierId']:'${dados.tierId}' AND active:'true'`, limit: 1 })
+      .catch(() => ({ data: [] as Stripe.Product[] }));
+    if (produtos.data.length === 0) return null;
+
+    const precos = await this.sdk().prices.list({
+      product: produtos.data[0].id,
+      currency: dados.currency,
+      active: true,
+      limit: 1,
+    });
+    const encontrado = precos.data.find(
+      (p) => p.unit_amount === dados.unitAmountEmCentavos && p.recurring?.interval === 'month',
+    );
+    return encontrado ? { id: encontrado.id } : null;
+  }
+
+  async criarSessaoDoPortal(dados: { customerId: string; returnUrl: string }): Promise<SessaoDoPortal> {
+    const sessao = await this.sdk().billingPortal.sessions.create({
+      customer: dados.customerId,
+      return_url: dados.returnUrl,
+    });
+    return { url: sessao.url };
   }
 }

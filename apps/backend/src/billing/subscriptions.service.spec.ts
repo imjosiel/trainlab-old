@@ -37,6 +37,7 @@ function prismaMock() {
     partnerAccount: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
     systemSettings: { findFirst: jest.fn() },
+    platformFinanceSettings: { findFirst: jest.fn() },
     userSubscription: { findUnique: jest.fn(), upsert: jest.fn() },
   };
 }
@@ -218,6 +219,27 @@ describe('SubscriptionsService', () => {
 
       expect(stripe.criarSessaoDeCheckoutAssinatura).toHaveBeenCalledWith(
         expect.objectContaining({ destinoDaTransferencia: 'acct_1' }),
+      );
+    });
+
+    it('A89 — com hourlyRate e policy base_only, usa calcCommission (não um percentual puro sobre o total)', async () => {
+      prisma.partnerOffer.findUnique.mockResolvedValue({
+        ...OFERTA_PAGA,
+        price: 100,
+        hourlyRate: 300,
+      });
+
+      await service.checkout(OFFER, sessao(), {});
+
+      // totalCents = 40000 (100+300). platformFeeCents = 2000 (comissão só sobre a
+      // base) + 1226 (parcela da taxa Stripe atribuível à hourlyRate) = 3226.
+      // Um percentual puro de 20% sobre o total teria dado 8000 — quase o triplo,
+      // cobrando da plataforma comissão sobre dinheiro que é 100% do treinador.
+      expect(stripe.criarSessaoDeCheckoutAssinatura).toHaveBeenCalledWith(
+        expect.objectContaining({
+          priceAmountEmCentavos: 40000,
+          percentualDeTaxa: (3226 / 40000) * 100,
+        }),
       );
     });
 
