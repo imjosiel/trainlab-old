@@ -13,6 +13,7 @@ import { CreditsModule } from '@/credits/credits.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { PartnerConnectModule } from '@/partner-connect/partner-connect.module';
 import { PartnerTiersModule } from '@/partner-tiers/partner-tiers.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
@@ -39,6 +40,7 @@ import { UsersModule } from '@/users/users.module';
     StudentsModule,
     CreditsModule,
     TrainingPlansModule,
+    PartnerConnectModule,
   ],
   controllers: [HealthController, MeController],
   providers: [

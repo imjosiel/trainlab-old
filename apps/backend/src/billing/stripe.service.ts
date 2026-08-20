@@ -49,6 +49,20 @@ export interface PrecoStripe {
   id: string;
 }
 
+export interface ContaConectada {
+  id: string;
+}
+
+export interface SessaoDeConta {
+  clientSecret: string | null;
+}
+
+export interface StatusDaContaConectada {
+  payoutsEnabled: boolean;
+  chargesEnabled: boolean;
+  disabledReason: string | null;
+}
+
 // Mesma API version do legado — trocar de versão é decisão própria, não desta migração.
 const API_VERSION = '2025-02-24.acacia' as Stripe.LatestApiVersion;
 
@@ -309,6 +323,70 @@ export class StripeService {
       subscriptionId: sessao.subscription ? String(sessao.subscription) : null,
       customerId: sessao.customer ? String(sessao.customer) : null,
       customerEmail: sessao.customer_details?.email ?? null,
+    };
+  }
+
+  /**
+   * D95 (fatia 21) — BUG-16 do legado: busca paginada por `metadata.userId`
+   * antes de criar, pra não duplicar conta Connect se o parceiro clicar duas
+   * vezes no setup. `stripe.accounts.list({ limit: 100 })` sozinho falhava
+   * acima de 100 parceiros — daí a paginação com `starting_after`.
+   */
+  async buscarOuCriarContaConectada(dados: {
+    userId: string;
+    email?: string | null;
+    partnerAccountId: string;
+  }): Promise<ContaConectada> {
+    let startingAfter: string | undefined;
+    for (;;) {
+      const pagina = await this.sdk().accounts.list({
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+
+      const encontrada = pagina.data.find((conta) => conta.metadata?.userId === dados.userId);
+      if (encontrada) {
+        await this.sdk()
+          .accounts.update(encontrada.id, {
+            metadata: { userId: dados.userId, partnerAccountId: dados.partnerAccountId },
+          })
+          .catch(() => {});
+        return { id: encontrada.id };
+      }
+
+      if (!pagina.has_more) break;
+      startingAfter = pagina.data[pagina.data.length - 1].id;
+    }
+
+    const conta = await this.sdk().accounts.create({
+      type: 'custom',
+      country: 'BR',
+      email: dados.email ?? undefined,
+      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+      business_profile: { mcc: '7999' },
+      business_type: 'individual',
+      metadata: { userId: dados.userId, partnerAccountId: dados.partnerAccountId },
+    });
+    return { id: conta.id };
+  }
+
+  async criarSessaoDeConta(
+    stripeAccountId: string,
+    components: Record<string, { enabled: boolean }>,
+  ): Promise<SessaoDeConta> {
+    const sessao = await this.sdk().accountSessions.create({
+      account: stripeAccountId,
+      components: components as Stripe.AccountSessionCreateParams['components'],
+    });
+    return { clientSecret: sessao.client_secret };
+  }
+
+  async buscarContaConectada(stripeAccountId: string): Promise<StatusDaContaConectada> {
+    const conta = await this.sdk().accounts.retrieve(stripeAccountId);
+    return {
+      payoutsEnabled: conta.payouts_enabled === true,
+      chargesEnabled: conta.charges_enabled === true,
+      disabledReason: conta.requirements?.disabled_reason ?? null,
     };
   }
 }
