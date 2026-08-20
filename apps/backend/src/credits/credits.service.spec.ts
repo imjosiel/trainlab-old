@@ -230,7 +230,7 @@ describe('CreditsService', () => {
       prisma.userCredits.findUnique.mockResolvedValue({ planCredits: 10, purchasedCredits: 5 });
       await service.gastar({ userId: EU, cost: 4, feature: 'PLAN_GEN' });
       expect(prisma.userCredits.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { planCredits: 6, purchasedCredits: 5 } }),
+        expect.objectContaining({ data: { planCredits: { decrement: 4 }, purchasedCredits: { decrement: 0 } } }),
       );
     });
 
@@ -238,7 +238,33 @@ describe('CreditsService', () => {
       prisma.userCredits.findUnique.mockResolvedValue({ planCredits: 3, purchasedCredits: 10 });
       await service.gastar({ userId: EU, cost: 8, feature: 'PLAN_GEN' });
       expect(prisma.userCredits.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { planCredits: 0, purchasedCredits: 5 } }),
+        expect.objectContaining({ data: { planCredits: { decrement: 3 }, purchasedCredits: { decrement: 5 } } }),
+      );
+    });
+
+    /**
+     * A90 — o desconto tem que ser RELATIVO. Um mock não modela concorrência,
+     * então o que dá pra fixar aqui é a FORMA do comando: `decrement`, nunca um
+     * absoluto derivado da leitura. A prova de que isso segura corrida de
+     * verdade está no e2e contra Postgres (credits-corridas, janela alargada).
+     */
+    it('A90 — o débito é relativo (decrement), não um absoluto da leitura pré-débito', async () => {
+      prisma.userCredits.findUnique.mockResolvedValue({ planCredits: 10, purchasedCredits: 0 });
+      await service.gastar({ userId: EU, cost: 5, feature: 'PLAN_GEN' });
+
+      const { data } = prisma.userCredits.updateMany.mock.calls[0][0];
+      expect(typeof data.planCredits).toBe('object');
+      expect(data.planCredits).toEqual({ decrement: 5 });
+    });
+
+    it('A90 — o guard de saldo continua no where, junto do decrement', async () => {
+      prisma.userCredits.findUnique.mockResolvedValue({ planCredits: 3, purchasedCredits: 10 });
+      await service.gastar({ userId: EU, cost: 8, feature: 'PLAN_GEN' });
+
+      expect(prisma.userCredits.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: EU, planCredits: { gte: 3 }, purchasedCredits: { gte: 5 } },
+        }),
       );
     });
 
@@ -250,9 +276,25 @@ describe('CreditsService', () => {
     });
 
     it('sucesso devolve o novo saldo', async () => {
-      prisma.userCredits.findUnique.mockResolvedValue({ planCredits: 10, purchasedCredits: 5 });
+      prisma.userCredits.findUnique
+        .mockResolvedValueOnce({ planCredits: 10, purchasedCredits: 5 }) // leitura pré-débito
+        .mockResolvedValueOnce({ planCredits: 6, purchasedCredits: 5 }); // releitura pós-débito
       const r = await service.gastar({ userId: EU, cost: 4, feature: 'PLAN_GEN' });
       expect(r).toEqual({ success: true, newBalance: 11, planCredits: 6, purchasedCredits: 5 });
+    });
+
+    /**
+     * A90 — o saldo reportado vem da releitura, não da conta feita sobre a
+     * leitura pré-débito. Sob concorrência as duas divergem: o segundo débito
+     * reportaria o saldo do primeiro. Aqui a releitura devolve um valor que a
+     * conta antiga (10-4=6) nunca produziria, então só passa quem relê.
+     */
+    it('A90 — o saldo devolvido vem da releitura pós-débito, não da conta sobre a leitura velha', async () => {
+      prisma.userCredits.findUnique
+        .mockResolvedValueOnce({ planCredits: 10, purchasedCredits: 5 })
+        .mockResolvedValueOnce({ planCredits: 2, purchasedCredits: 5 }); // outro débito passou no meio
+      const r = await service.gastar({ userId: EU, cost: 4, feature: 'PLAN_GEN' });
+      expect(r).toEqual({ success: true, newBalance: 7, planCredits: 2, purchasedCredits: 5 });
     });
 
     it('débito misto grava duas transações de auditoria (parte plano + parte comprados)', async () => {

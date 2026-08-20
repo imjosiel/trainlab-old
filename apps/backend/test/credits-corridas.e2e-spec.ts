@@ -103,4 +103,54 @@ describe('gastar — corrida contra Postgres real (trava atômica do débito)', 
     expect(saldoFinal?.planCredits).toBe(0);
     expect(saldoFinal?.purchasedCredits).toBe(0);
   });
+
+  /**
+   * A90 — o teste acima é a propriedade certa, mas o desfecho dele depende do
+   * escalonador: se as três chamadas não se sobrepuserem de verdade, ele passa
+   * mesmo com a trava quebrada. Foi exatamente assim que o lost update abaixo
+   * sobreviveu à fatia 17 e só apareceu como "falha intermitente" no CI.
+   *
+   * Aqui a janela entre a LEITURA do saldo e a escrita da trava é alargada de
+   * propósito (só no teste), forçando as três a lerem antes de qualquer uma
+   * escrever. É o mesmo instrumento do D98a — com a diferença de que lá ele
+   * serviu pra fazer um teste fraco começar a falhar, e aqui serve pra tornar
+   * determinística uma falha que já existia.
+   */
+  it('A90 — janela alargada: três débitos que leem o mesmo saldo não podem virar três sucessos', async () => {
+    await prisma.userCredits.upsert({
+      where: { userId: treinadorId },
+      create: { userId: treinadorId, planCredits: 10, purchasedCredits: 0 },
+      update: { planCredits: 10, purchasedCredits: 0 },
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const delegate = prisma.userCredits as any;
+    const leituraOriginal = delegate.findUnique.bind(delegate);
+    const spy = jest
+      .spyOn(delegate, 'findUnique')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockImplementation(async (...args: any[]) => {
+        const linha = await leituraOriginal(...args);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        return linha;
+      });
+
+    let tentativas;
+    try {
+      tentativas = await Promise.all([
+        credits.gastar({ userId: treinadorId, cost: 5, feature: 'TEST' }),
+        credits.gastar({ userId: treinadorId, cost: 5, feature: 'TEST' }),
+        credits.gastar({ userId: treinadorId, cost: 5, feature: 'TEST' }),
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(tentativas.filter((t) => t.success)).toHaveLength(2);
+
+    // A asserção que mata o lost update: o saldo tem que refletir 2 débitos de
+    // 5 sobre 10. Três escritas absolutas de uma leitura velha deixariam 5 aqui.
+    const saldoFinal = await prisma.userCredits.findUnique({ where: { userId: treinadorId } });
+    expect(saldoFinal?.planCredits).toBe(0);
+  });
 });

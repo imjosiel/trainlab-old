@@ -86,3 +86,69 @@ na pré-checagem de saldo insuficiente OU na trava atômica do `updateMany` —
 os dois são desfechos corretos da mesma proteção), então o teste afirma a
 propriedade financeira (2 sucessos, 1 falha, saldo final exato), não qual
 mensagem específica aparece.
+
+### A90 — a trava do D89 estava pela metade: lost update no débito (CORRIGIDO em 2026-08-20)
+
+O D89 acima acertou o diagnóstico (só Postgres real prova a trava) e ainda
+assim deixou passar o bug, porque olhou só pro `where`. O `data` gravava o
+valor **absoluto** calculado da leitura pré-débito:
+
+```ts
+where: { userId, planCredits: { gte: debitFromPlan }, ... },
+data:  { planCredits: newPlan, ... },   // ← absoluto, de leitura velha
+```
+
+Sob READ COMMITTED, quem esbarra na linha travada bloqueia e **reavalia o
+`where`** contra a versão nova (EvalPlanQual) — então o guard cumpria metade
+do trabalho: impedia saldo negativo. Mas com três débitos de 5 sobre 10,
+todos liam 10, todos passavam no `gte`, e todos gravavam 5. Saldo final 5,
+três sucessos: **o usuário gastava 15 pagando 5.**
+
+Corrigido trocando o absoluto por `{ decrement: n }`, que o Postgres resolve
+na própria linha travada. O `where` continua igual — ele nunca foi o problema.
+
+**Como escapou, e o que muda no método.** O e2e do D89 afirma a propriedade
+certa, mas o desfecho dele dependia do escalonador: se as três chamadas não
+se sobrepusessem, passava. Foi o que aconteceu — em CI virou *falha
+intermitente*, e um `gh run rerun` verde chegou a ser lido como flakiness
+(era o bug). Duas lições:
+
+1. **Rerun verde não é evidência de correção** num teste de corrida. A
+   assinatura estava no log o tempo todo: as três respostas com o mesmo
+   `newBalance: 5`. Três sucessos idênticos não são "pouca contenção" — são
+   três escritas colapsando numa.
+2. **Teste de corrida precisa de janela alargada pra ser determinístico** —
+   mesma conclusão do D98a (afiliados), mas por caminho inverso: lá o
+   alargamento fez um teste fraco começar a falhar; aqui tornou determinística
+   uma falha que já existia. Adicionado o caso `A90` no mesmo arquivo, que
+   atrasa 60ms entre a leitura e a escrita (só no teste, via spy no
+   `findUnique`) forçando as três a lerem antes de qualquer uma escrever.
+
+**Não foi regressão da migração** — `apps/web/lib/credits.ts` tinha o defeito
+idêntico, linha por linha, e o port foi fiel. Estava em produção desde antes.
+Corrigido nos dois lugares: o legado segue vivo enquanto
+`POST /api/training-plans` (geração por IA) não migrar, e os dois precisam
+ficar em paridade até lá.
+
+**Sobre paridade comportamental como critério.** Este é o caso-limite do
+método: portar fielmente propaga o bug junto. O que pegou não foi o teste
+derivado do legado, foi o teste derivado da *propriedade financeira*. Em
+invariante de dinheiro, o teste tem que sair da propriedade, não do
+comportamento observado.
+
+**Efeito colateral corrigido junto:** `newBalance`/`balanceAfter` vinham da
+conta sobre a leitura pré-débito e mentiam sob concorrência (o segundo débito
+reportava o saldo do primeiro). Agora saem de uma releitura pós-débito.
+
+**Varredura do padrão.** Todo `updateMany` do backend foi auditado. Os demais
+são transição de estado (`pending`→`flushing`, `accepted:false`→`true`, CAS
+de `claimedAt`), seguros por construção: o `where` reavaliado não casa mais.
+Todas as outras mutações numéricas (flush de afiliado, comissão, conceder e
+comprar crédito) já usavam `increment`/`decrement`. O `gastar()` era o único
+outlier — não é padrão sistêmico.
+
+**Fica anotado, severidade menor:** `resetarCreditos` grava `planCredits`
+absoluto, mas o valor vem da config do tier, não de leitura do saldo — dois
+resets concorrentes gravam o mesmo número (idempotente). O risco é um reset
+atropelar um gasto simultâneo na virada do período. Janela estreita, e é
+concessão, não débito.

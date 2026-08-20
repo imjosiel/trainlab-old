@@ -254,19 +254,43 @@ export class CreditsService {
     const debitFromPlan = Math.min(cost, plan);
     const debitFromPurchased = cost - debitFromPlan;
 
-    const newPlan = plan - debitFromPlan;
-    const newPurchased = purchased - debitFromPurchased;
-    const newTotal = newPlan + newPurchased;
-
-    // Trava atômica: o updateMany só sucede se os saldos ainda são suficientes.
+    /**
+     * A90 — trava atômica: o `where` garante que o saldo ainda dá, e o
+     * `decrement` faz o desconto RELATIVO, na própria linha travada.
+     *
+     * O `where` sozinho não bastava. Sob READ COMMITTED, quem esbarra na linha
+     * travada bloqueia e reavalia o `where` contra a versão nova — então o
+     * guard impedia saldo negativo. Mas a versão anterior gravava o valor
+     * ABSOLUTO calculado da leitura lá de cima: três débitos de 5 sobre 10 liam
+     * todos 10, gravavam todos 5, e os três "sucediam" deixando 5 no banco.
+     * Lost update clássico: o usuário gastava 15 pagando 5. Herdado do legado
+     * (`apps/web/lib/credits.ts`), não introduzido pelo port.
+     *
+     * `updateMany` (e não `update`) porque ele compila num único UPDATE — é
+     * essa garantia que sustenta a trava.
+     */
     const guardResult = await this.prisma.userCredits.updateMany({
       where: { userId, planCredits: { gte: debitFromPlan }, purchasedCredits: { gte: debitFromPurchased } },
-      data: { planCredits: newPlan, purchasedCredits: newPurchased },
+      data: {
+        planCredits: { decrement: debitFromPlan },
+        purchasedCredits: { decrement: debitFromPurchased },
+      },
     });
 
     if (guardResult.count === 0) {
       return { success: false, error: 'Créditos insuficientes (conflito de concorrência). Tente novamente.' };
     }
+
+    // Releitura pra auditoria: `updateMany` não devolve a linha, e os valores
+    // calculados da leitura pré-débito mentiriam sob concorrência (o segundo
+    // débito reportaria 5 quando o saldo real já é 0).
+    const aposDebito = await this.prisma.userCredits.findUnique({
+      where: { userId },
+      select: { planCredits: true, purchasedCredits: true },
+    });
+    const newPlan = aposDebito?.planCredits ?? plan - debitFromPlan;
+    const newPurchased = aposDebito?.purchasedCredits ?? purchased - debitFromPurchased;
+    const newTotal = newPlan + newPurchased;
 
     const desc = description || feature;
     const auditOps =
