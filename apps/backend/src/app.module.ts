@@ -11,6 +11,7 @@ import { AffiliatesModule } from '@/affiliates/affiliates.module';
 import { AppointmentsModule } from '@/appointments/appointments.module';
 import { BillingModule } from '@/billing/billing.module';
 import { CreditsModule } from '@/credits/credits.module';
+import { ExercisesModule } from '@/exercises/exercises.module';
 import { HealthController } from '@/health/health.controller';
 import { MessagesModule } from '@/messages/messages.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
@@ -43,6 +44,7 @@ import { UsersModule } from '@/users/users.module';
     TrainingPlansModule,
     PartnerConnectModule,
     AffiliatesModule,
+    ExercisesModule,
   ],
   controllers: [HealthController, MeController],
   providers: [
