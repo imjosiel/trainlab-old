@@ -370,6 +370,54 @@ export class StripeService {
     return { id: conta.id };
   }
 
+  /**
+   * D97 (fatia 22) — irmã de `buscarOuCriarContaConectada`, não a mesma
+   * função generalizada: capabilities diferentes (afiliado só recebe
+   * repasse, não cobra ninguém — sem `card_payments`), busca filtra também
+   * por `metadata.type === 'affiliate'` (sem isso, a mesma pessoa sendo
+   * parceiro E afiliado faria o setup de um reaproveitar a conta do outro),
+   * e a chave de metadata é `affiliateAccountId`.
+   */
+  async buscarOuCriarContaConectadaDeAfiliado(dados: {
+    userId: string;
+    email?: string | null;
+    affiliateAccountId: string;
+  }): Promise<ContaConectada> {
+    let startingAfter: string | undefined;
+    for (;;) {
+      const pagina = await this.sdk().accounts.list({
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+
+      const encontrada = pagina.data.find(
+        (conta) => conta.metadata?.userId === dados.userId && conta.metadata?.type === 'affiliate',
+      );
+      if (encontrada) {
+        await this.sdk()
+          .accounts.update(encontrada.id, {
+            metadata: { userId: dados.userId, affiliateAccountId: dados.affiliateAccountId, type: 'affiliate' },
+          })
+          .catch(() => {});
+        return { id: encontrada.id };
+      }
+
+      if (!pagina.has_more) break;
+      startingAfter = pagina.data[pagina.data.length - 1].id;
+    }
+
+    const conta = await this.sdk().accounts.create({
+      type: 'custom',
+      country: 'BR',
+      email: dados.email ?? undefined,
+      capabilities: { transfers: { requested: true } },
+      business_profile: { mcc: '7999' },
+      business_type: 'individual',
+      metadata: { userId: dados.userId, affiliateAccountId: dados.affiliateAccountId, type: 'affiliate' },
+    });
+    return { id: conta.id };
+  }
+
   async criarSessaoDeConta(
     stripeAccountId: string,
     components: Record<string, { enabled: boolean }>,

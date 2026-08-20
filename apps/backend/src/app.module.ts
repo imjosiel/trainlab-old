@@ -7,6 +7,7 @@ import { ErrorContractFilter } from '@/common/error-contract.filter';
 import { MeController } from '@/auth/me.controller';
 import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
 import { RolesGuard } from '@/auth/roles.guard';
+import { AffiliatesModule } from '@/affiliates/affiliates.module';
 import { AppointmentsModule } from '@/appointments/appointments.module';
 import { BillingModule } from '@/billing/billing.module';
 import { CreditsModule } from '@/credits/credits.module';
@@ -41,6 +42,7 @@ import { UsersModule } from '@/users/users.module';
     CreditsModule,
     TrainingPlansModule,
     PartnerConnectModule,
+    AffiliatesModule,
   ],
   controllers: [HealthController, MeController],
   providers: [
