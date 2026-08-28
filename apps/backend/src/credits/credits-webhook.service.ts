@@ -38,17 +38,18 @@ export class CreditsWebhookService {
       });
     }
 
-    const claim = await this.claims.reivindicar(event.id);
+    const claimId = `credits:${event.id}`;
+    const claim = await this.claims.reivindicar(claimId);
     if (claim !== 'reivindicado') {
       return { received: true, cached: true };
     }
 
     try {
       await this.processarEvento(event);
-      await this.claims.concluir(event.id);
+      await this.claims.concluir(claimId);
       return { received: true };
     } catch (erro) {
-      await this.claims.liberar(event.id);
+      await this.claims.liberar(claimId);
       throw erro;
     }
   }

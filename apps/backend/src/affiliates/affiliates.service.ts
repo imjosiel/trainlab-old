@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { SessionPayload } from '@/auth/session-payload';
 import { ROLES } from '@/common/constants';
 import { parseLimit, parsePage } from '@/common/pagination';
+import { derivarStatusDaContaConectada } from '@/common/stripe-connect-status';
 import { PrismaService } from '@/prisma/prisma.service';
 import { StripeService } from '@/billing/stripe.service';
 
@@ -111,15 +112,7 @@ export class AffiliatesService {
     }
 
     const statusStripe = await this.stripe.buscarContaConectada(conta.stripeAccountId);
-
-    let stripeAccountStatus: string;
-    if (statusStripe.payoutsEnabled) {
-      stripeAccountStatus = 'active';
-    } else if (statusStripe.disabledReason) {
-      stripeAccountStatus = 'restricted';
-    } else {
-      stripeAccountStatus = 'pending';
-    }
+    const stripeAccountStatus = derivarStatusDaContaConectada(statusStripe, false);
 
     await this.prisma.affiliateAccount.update({
       where: { id: conta.id },

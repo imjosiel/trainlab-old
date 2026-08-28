@@ -101,13 +101,13 @@ describe('CreditsWebhookService', () => {
 
     it('reivindicado → processa e conclui', async () => {
       await service.processarWebhook('corpo', 'sig');
-      expect(claims.concluir).toHaveBeenCalledWith('evt_1');
+      expect(claims.concluir).toHaveBeenCalledWith('credits:evt_1');
     });
 
     it('falha no processamento libera o claim e sobe o erro', async () => {
       credits.registrarCompra.mockRejectedValue(new Error('banco fora do ar'));
       await expect(service.processarWebhook('corpo', 'sig')).rejects.toThrow('banco fora do ar');
-      expect(claims.liberar).toHaveBeenCalledWith('evt_1');
+      expect(claims.liberar).toHaveBeenCalledWith('credits:evt_1');
       expect(claims.concluir).not.toHaveBeenCalled();
     });
 

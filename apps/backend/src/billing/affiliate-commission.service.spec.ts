@@ -31,14 +31,18 @@ function prismaMock() {
   return {
     tx,
     partnerOffer: { findUnique: jest.fn() },
-    affiliateEarning: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
+    affiliateEarning: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     affiliateAccount: { update: jest.fn() },
     $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   };
 }
 
 function stripeMock() {
-  return { transferir: jest.fn().mockResolvedValue({ id: 'tr_1' }) };
+  return {
+    transferir: jest.fn().mockResolvedValue({ id: 'tr_1' }),
+    listarTransferenciasPorDestino: jest.fn().mockResolvedValue([]),
+    reverterTransferencia: jest.fn().mockResolvedValue(undefined),
+  };
 }
 
 function notificationsMock() {
@@ -308,6 +312,108 @@ describe('AffiliateCommissionService (D76/D77, corrige A75 e A76)', () => {
 
       await expect(service.processar(ASSINATURA, FATURA)).resolves.toEqual(
         expect.objectContaining({ situacao: 'registrada' }),
+      );
+    });
+  });
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * reverter — charge.refunded / application_fee.refunded (fatia 25)
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  describe('reverter', () => {
+    function earningRow(over: Record<string, unknown> = {}) {
+      return {
+        id: 'earn-1',
+        earnedAmount: 1000,
+        status: 'available',
+        affiliate: { id: 'aff-1', userId: 'user-aff', stripeAccountId: 'acct_aff' },
+        ...over,
+      };
+    }
+
+    it('sem earnings pendentes/disponíveis pra essa invoice → no-op', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([]);
+      const r = await service.reverter('in_sem_earning');
+      expect(r).toEqual({ earningsRevertidos: 0 });
+      expect(prisma.affiliateEarning.update).not.toHaveBeenCalled();
+    });
+
+    it('busca só earnings pending ou available da invoice — outros status ficam de fora', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([]);
+      await service.reverter('in_1');
+      expect(prisma.affiliateEarning.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { invoiceId: 'in_1', status: { in: ['pending', 'available'] } } }),
+      );
+    });
+
+    it('available com Stripe Connect: acha o transfer pelo earningId e reverte', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([earningRow()]);
+      stripe.listarTransferenciasPorDestino.mockResolvedValue([
+        { id: 'tr_outro', metadata: { earningId: 'earn-outro' } },
+        { id: 'tr_1', metadata: { earningId: 'earn-1' } },
+      ]);
+
+      await service.reverter('in_1');
+
+      expect(stripe.reverterTransferencia).toHaveBeenCalledWith('tr_1', 1000, expect.objectContaining({ earningId: 'earn-1' }), 'reversal:earn-1');
+    });
+
+    it('available sem transfer encontrado: não tenta reverter transferência, mas ajusta o saldo mesmo assim', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([earningRow()]);
+      stripe.listarTransferenciasPorDestino.mockResolvedValue([]);
+
+      await service.reverter('in_1');
+
+      expect(stripe.reverterTransferencia).not.toHaveBeenCalled();
+      expect(prisma.tx.affiliateAccount.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { availableBalance: { decrement: 1000 } } }),
+      );
+    });
+
+    it('pending: nem tenta buscar transfer (nunca foi transferido)', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([earningRow({ status: 'pending' })]);
+
+      await service.reverter('in_1');
+
+      expect(stripe.listarTransferenciasPorDestino).not.toHaveBeenCalled();
+      expect(prisma.tx.affiliateAccount.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { pendingBalance: { decrement: 1000 } } }),
+      );
+    });
+
+    it('marca o earning como cancelled', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([earningRow({ status: 'pending' })]);
+      await service.reverter('in_1');
+      expect(prisma.tx.affiliateEarning.update).toHaveBeenCalledWith({ where: { id: 'earn-1' }, data: { status: 'cancelled' } });
+    });
+
+    it('conta quantos earnings foram revertidos com sucesso', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([
+        earningRow({ id: 'earn-1', status: 'pending' }),
+        earningRow({ id: 'earn-2', status: 'available' }),
+      ]);
+      const r = await service.reverter('in_1');
+      expect(r).toEqual({ earningsRevertidos: 2 });
+    });
+
+    it('falha ao reverter um earning não impede os outros', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([
+        earningRow({ id: 'earn-quebra', status: 'pending' }),
+        earningRow({ id: 'earn-ok', status: 'pending' }),
+      ]);
+      prisma.tx.affiliateEarning.update.mockImplementationOnce(() => {
+        throw new Error('banco fora do ar');
+      });
+
+      const r = await service.reverter('in_1');
+      expect(r).toEqual({ earningsRevertidos: 1 });
+    });
+
+    it('notifica o afiliado da reversão', async () => {
+      prisma.affiliateEarning.findMany.mockResolvedValue([earningRow({ status: 'pending' })]);
+      await service.reverter('in_1');
+      expect(notifications.criar).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-aff', type: 'AFFILIATE_COMMISSION_REVERSED' }),
       );
     });
   });

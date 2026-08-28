@@ -3,6 +3,7 @@ import { UserRole } from '.prisma-backend/client';
 
 import { SessionPayload } from '@/auth/session-payload';
 import { ROLES, SYSTEM_ROLES } from '@/common/constants';
+import { derivarStatusDaContaConectada } from '@/common/stripe-connect-status';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { StripeService } from '@/billing/stripe.service';
@@ -230,15 +231,7 @@ export class PartnerConnectService {
     }
 
     const statusStripe = await this.stripe.buscarContaConectada(conta.stripeAccountId);
-
-    let stripeAccountStatus: string;
-    if (statusStripe.payoutsEnabled && statusStripe.chargesEnabled) {
-      stripeAccountStatus = 'active';
-    } else if (statusStripe.disabledReason) {
-      stripeAccountStatus = 'restricted';
-    } else {
-      stripeAccountStatus = 'pending';
-    }
+    const stripeAccountStatus = derivarStatusDaContaConectada(statusStripe, true);
 
     await this.prisma.partnerAccount.update({
       where: { id: conta.id },

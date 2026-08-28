@@ -208,6 +208,87 @@ export class AffiliateCommissionService {
     return { situacao: 'registrada', status, valorEmCentavos: comissaoEmCentavos };
   }
 
+  /**
+   * Fatia 25 — reverte a(s) comissão(ões) de afiliado presas a uma invoice
+   * reembolsada (`charge.refunded`/`application_fee.refunded`). Sem isso a
+   * plataforma perde dinheiro: o aluno é reembolsado, mas o afiliado fica
+   * com a comissão.
+   *
+   * O `AffiliateEarning` não guarda o `transferId` (A77 — lacuna de auditoria
+   * já documentada em `processar()`), então achar a transferência a reverter
+   * é busca por metadata (`earningId`) nos transfers do destino, igual o
+   * legado fazia.
+   *
+   * Cada earning é revertido de forma independente: falha em um (transfer
+   * não encontrado, Stripe fora do ar) não impede os outros.
+   */
+  async reverter(invoiceId: string): Promise<{ earningsRevertidos: number }> {
+    const earnings = await this.prisma.affiliateEarning.findMany({
+      where: { invoiceId, status: { in: ['pending', 'available'] } },
+      include: { affiliate: { select: { id: true, userId: true, stripeAccountId: true } } },
+    });
+    if (earnings.length === 0) return { earningsRevertidos: 0 };
+
+    let revertidos = 0;
+    for (const earning of earnings) {
+      try {
+        if (earning.status === 'available' && earning.affiliate.stripeAccountId) {
+          const transferencias = await this.stripe.listarTransferenciasPorDestino(earning.affiliate.stripeAccountId);
+          // G1 — fallback invoiceId para transfers antigos sem earningId (antes de D76).
+          const transferencia = transferencias.find(
+            (t) => t.metadata.earningId === earning.id || t.metadata.invoiceId === invoiceId,
+          );
+          if (transferencia) {
+            await this.stripe.reverterTransferencia(
+              transferencia.id,
+              earning.earnedAmount,
+              {
+                type: 'affiliate_commission_reversal',
+                reason: 'refund',
+                earningId: earning.id,
+              },
+              `reversal:${earning.id}`,
+            );
+          } else {
+            this.logger.warn(`Transfer não encontrado pro earning ${earning.id} — saldo ajustado mesmo assim.`);
+          }
+        }
+
+        const campoDeSaldo = earning.status === 'available' ? 'availableBalance' : 'pendingBalance';
+        await this.prisma.$transaction(async (tx) => {
+          await tx.affiliateEarning.update({ where: { id: earning.id }, data: { status: 'cancelled' } });
+          await tx.affiliateAccount.update({
+            where: { id: earning.affiliate.id },
+            data: { [campoDeSaldo]: { decrement: earning.earnedAmount } },
+          });
+        });
+
+        await this.avisarReversao(earning.affiliate.userId, earning.earnedAmount);
+        revertidos++;
+      } catch (erro) {
+        this.logger.warn(
+          `Falha ao reverter earning ${earning.id}: ${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      }
+    }
+
+    return { earningsRevertidos: revertidos };
+  }
+
+  private async avisarReversao(userId: string, centavos: number): Promise<void> {
+    try {
+      await this.notifications.criar({
+        userId,
+        type: 'AFFILIATE_COMMISSION_REVERSED',
+        title: '⚠️ Comissão revertida',
+        message: `Uma comissão de R$ ${(centavos / 100).toFixed(2)} foi revertida devido a um reembolso do aluno.`,
+        link: '/dashboard/affiliate',
+      });
+    } catch (erro) {
+      this.logger.warn(`Reversão registrada, mas o aviso falhou: ${erro instanceof Error ? erro.message : String(erro)}`);
+    }
+  }
+
   /** Aviso é acessório: derrubar a comissão por causa dele seria trocar o certo pelo menor. */
   private async avisar(userId: string, centavos: number, status: string): Promise<void> {
     try {

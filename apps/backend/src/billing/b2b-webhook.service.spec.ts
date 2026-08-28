@@ -126,7 +126,7 @@ describe('B2BWebhookService', () => {
     it('reivindicado → processa e conclui', async () => {
       await service.processarWebhook('corpo', 'sig');
 
-      expect(claims.concluir).toHaveBeenCalledWith('evt_1');
+      expect(claims.concluir).toHaveBeenCalledWith('b2b:evt_1');
     });
 
     // O par que fecha o D75 no dispatcher: falha no processamento LIBERA o
@@ -136,7 +136,7 @@ describe('B2BWebhookService', () => {
 
       await expect(service.processarWebhook('corpo', 'sig')).rejects.toThrow('banco fora do ar');
 
-      expect(claims.liberar).toHaveBeenCalledWith('evt_1');
+      expect(claims.liberar).toHaveBeenCalledWith('b2b:evt_1');
       expect(claims.concluir).not.toHaveBeenCalled();
     });
 

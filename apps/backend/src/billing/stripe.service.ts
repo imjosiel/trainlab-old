@@ -5,6 +5,16 @@ export interface Transferencia {
   id: string;
 }
 
+export interface TransferenciaComMetadata {
+  id: string;
+  metadata: Record<string, string>;
+}
+
+export interface ChargeStripe {
+  id: string;
+  invoiceId: string | null;
+}
+
 export interface EventoStripe {
   id: string;
   type: string;
@@ -535,5 +545,38 @@ export class StripeService {
       return_url: dados.returnUrl,
     });
     return { url: sessao.url };
+  }
+
+  /** Fatia 25 — o `AffiliateEarning` não guarda o `transferId`, então reverter exige achá-lo por metadata. */
+  async listarTransferenciasPorDestino(destino: string, limite = 100): Promise<TransferenciaComMetadata[]> {
+    const pagina = await this.sdk().transfers.list({ destination: destino, limit: limite });
+    return pagina.data.map((t) => ({ id: t.id, metadata: (t.metadata ?? {}) as Record<string, string> }));
+  }
+
+  async reverterTransferencia(
+    transferId: string,
+    valorEmCentavos: number,
+    metadata: Record<string, string>,
+    idempotencyKey?: string,
+  ): Promise<void> {
+    await this.sdk().transfers.createReversal(
+      transferId,
+      { amount: valorEmCentavos, metadata },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
+  }
+
+  /**
+   * `charge.invoice` foi removido do tipo `Charge` do SDK só na API version
+   * `2025-03-31` — a fixada aqui é `2025-02-24.acacia`, anterior a essa
+   * remoção, e o campo continua vindo de verdade na resposta HTTP. O pacote
+   * `stripe` instalado é que traz os tipos da versão mais nova por padrão,
+   * então o gap é só de tipagem — daí o cast, não uma mudança de desenho.
+   */
+  async buscarCharge(chargeId: string): Promise<ChargeStripe> {
+    const charge = await this.sdk().charges.retrieve(chargeId);
+    const invoice = (charge as unknown as { invoice: string | { id: string } | null }).invoice;
+    const invoiceId = invoice ? (typeof invoice === 'string' ? invoice : invoice.id) : null;
+    return { id: charge.id, invoiceId };
   }
 }

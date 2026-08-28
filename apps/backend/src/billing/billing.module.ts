@@ -18,6 +18,8 @@ import {
 } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { WebhookClaimService } from './webhook-claim.service';
+import { WebhookConnectController } from './webhook-connect.controller';
+import { WebhookConnectService } from './webhook-connect.service';
 
 /**
  * Módulo de dinheiro da fatia 15, completo: o núcleo (claim de webhook,
@@ -35,6 +37,7 @@ import { WebhookClaimService } from './webhook-claim.service';
     AdminSubscriptionsController,
     B2BWebhookController,
     StripeCheckoutController,
+    WebhookConnectController,
   ],
   providers: [
     WebhookClaimService,
@@ -45,6 +48,7 @@ import { WebhookClaimService } from './webhook-claim.service';
     AdminSubscriptionsService,
     B2BWebhookService,
     StripeCheckoutService,
+    WebhookConnectService,
   ],
   exports: [WebhookClaimService, AffiliateCommissionService, StripeService],
 })

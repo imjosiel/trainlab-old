@@ -59,17 +59,23 @@ export class B2BWebhookService {
       });
     }
 
-    const claim = await this.claims.reivindicar(event.id);
+    // C1 — cada endpoint Stripe reenvia o MESMO event.id para todos os
+    // endpoints que assinam aquele `type` (ex.: customer.subscription.updated).
+    // Se dois endpoints compartilharem a mesma linha em ProcessedWebhookEvent,
+    // o primeiro a reivindicar bloqueia o segundo. Prefixo isola por endpoint
+    // sem precisar migrar a PK para (eventId, endpoint).
+    const claimId = `b2b:${event.id}`;
+    const claim = await this.claims.reivindicar(claimId);
     if (claim !== 'reivindicado') {
       return { received: true, cached: true };
     }
 
     try {
       await this.processarEvento(event);
-      await this.claims.concluir(event.id);
+      await this.claims.concluir(claimId);
       return { received: true };
     } catch (erro) {
-      await this.claims.liberar(event.id);
+      await this.claims.liberar(claimId);
       throw erro;
     }
   }
