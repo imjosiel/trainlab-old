@@ -1,16 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation, ApiQuery, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import { ListPlansQuery, TrainingPlansService, UpdatePlanBody } from './training-plans.service';
+import { CreatePlanBody, TrainingPlansCreateService } from './training-plans-create.service';
 
 @ApiTags('training-plans')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ schema: { example: { error: 'Não autorizado' } } })
 @Controller('training-plans')
 export class TrainingPlansController {
-  constructor(private readonly plans: TrainingPlansService) {}
+  constructor(
+    private readonly plans: TrainingPlansService,
+    private readonly creator: TrainingPlansCreateService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Lista planos (trainer | atleta | aluno B2B | admin), paginada.' })
@@ -49,5 +53,11 @@ export class TrainingPlansController {
   @ApiOperation({ summary: 'Apaga o plano.' })
   remover(@Param('id') id: string, @CurrentUser() user: SessionPayload) {
     return this.plans.remover(id, user);
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Cria plano (manual ou via IA com RAG + créditos).' })
+  criar(@CurrentUser() user: SessionPayload, @Body() body: CreatePlanBody) {
+    return this.creator.criar(user, body);
   }
 }
