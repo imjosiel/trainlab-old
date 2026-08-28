@@ -204,6 +204,7 @@ export class ExercisesService {
     });
 
     if (isR2Upload) void this.storage.dispararProcessamentoDeVideo();
+    void this.gerarESalvarResumo(exercise.id, name, description, category);
 
     return { exercise, message: 'Exercício criado com sucesso' };
   }
@@ -293,6 +294,8 @@ export class ExercisesService {
       },
     });
 
+    if (body.description !== undefined) void this.gerarESalvarResumo(exercise.id, exercise.name, exercise.description, exercise.category);
+
     return { exercise, message: 'Exercício atualizado' };
   }
 
@@ -315,5 +318,41 @@ export class ExercisesService {
 
     await this.prisma.exercise.delete({ where: { id } });
     return { message: 'Exercício apagado com sucesso.' };
+  }
+
+  private async gerarESalvarResumo(id: string, name: string, description: string, category: string): Promise<void> {
+    if (process.env.AI_MOCK === 'true') {
+      const mock = `Resumo mock de ${name} (${category})`;
+      await this.prisma.exercise.update({ where: { id }, data: { aiSummary: mock } }).catch(() => {});
+      return;
+    }
+    try {
+      const plain = description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000);
+      const prompt = `Você é um assistente esportivo. Resuma o exercício abaixo em 1 ou 2 frases curtas e objetivas, explicando apenas O QUE é o exercício e PARA QUE serve. Não inclua instruções de execução, detalhes técnicos ou pontuação no final.\n\nExercício: ${name}\nCategoria: ${category}\nDescrição: ${plain}\n\nResponda APENAS com o resumo, sem aspas, sem prefixos como "Resumo:" ou "O exercício".`;
+      let summary: string | null = null;
+      if (process.env.GROQ_API_KEY) {
+        const Groq = (await import('groq-sdk')).default;
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        const r = await groq.chat.completions.create({ model: 'llama-3.1-8b-instant', temperature: 0.3, max_tokens: 80, messages: [{ role: 'user', content: prompt }] });
+        summary = r.choices?.[0]?.message?.content?.trim() ?? null;
+      }
+      if (!summary && process.env.GEMINI_API_KEY) {
+        const geminiModel = (await this.prisma.systemSettings.findFirst({ select: { geminiModel: true } }).catch(() => null))?.geminiModel ?? 'gemini-2.0-flash';
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 80, temperature: 0.3 } }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (res.ok) {
+          const data: any = await res.json();
+          summary = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
+        }
+      }
+      if (!summary) return;
+      await this.prisma.exercise.update({ where: { id }, data: { aiSummary: summary } });
+    } catch (e) {
+      // fire-and-forget: não derruba a criação do exercício
+      console.warn('[AI_SUMMARY]', (e as Error).message);
+    }
   }
 }
