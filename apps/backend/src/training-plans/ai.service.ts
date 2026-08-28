@@ -79,14 +79,81 @@ export class AiService {
 
   async gerarPlano(args: { targetName: string; profile: any; duration: number; availableExercises: any[]; ragContext?: string }): Promise<AiJson> {
     const { targetName, profile, duration, availableExercises, ragContext = '' } = args;
-    const isMockMode = !process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'dummy' || process.env.GROQ_API_KEY.includes('placeholder');
-    if (isMockMode && process.env.NODE_ENV !== 'production') {
-      this.logger.warn('[AI] GROQ_API_KEY ausente/inválida — retornando plano mock');
-      return {
-        resumoExecutivo: `Plano mock para ${targetName} (${duration} dias)`,
-        dicasFinais: 'Mock — configure GROQ_API_KEY válida para IA real',
-        dias: [{ dia: 1, titulo: 'Sessão Mock', duracaoMinutos: 60, intensidade: 'Média', descricaoCompleta: 'Treino mock', exercicios: [] }],
-      };
+    const isMockMode = process.env.AI_MOCK === 'true';
+    if (isMockMode) {
+      this.logger.warn('[AI] GROQ_API_KEY ausente/inválida — plano mock com rotação (dev)');
+      const mockDaysPerWeek = (profile?.trainingDaysPerWeek as number) || 5;
+      const mockSessionsPerWeek = Math.min(mockDaysPerWeek, 7);
+      const mockDias = Array.from({ length: mockSessionsPerWeek }, (_, i) => ({
+        dia: i + 1,
+        titulo: `Sessão Mock ${i + 1}`,
+        duracaoMinutos: 60,
+        intensidade: 'Média',
+        descricaoCompleta: `Treino mock ${i + 1}`,
+        exercicios: [] as any[],
+      }));
+      const exPerSessionMock = Math.min(availableExercises.length, 7);
+      mockDias.forEach((dia, idx) => {
+        dia.exercicios = availableExercises.slice(idx * exPerSessionMock, idx * exPerSessionMock + exPerSessionMock).map((ex: any, j: number) => ({
+          exerciseId: ex.id,
+          phase: j === 0 ? 'aquecimento' : j === exPerSessionMock - 1 ? 'volta_a_calma' : 'principal',
+          category: ex.category,
+          difficulty: ex.difficulty,
+          sets: 3,
+          reps: '10',
+          restSeconds: 60,
+          notes: `Mock ex ${ex.name}`,
+          completed: false,
+        }));
+        if (dia.exercicios.length < exPerSessionMock) {
+          const need = exPerSessionMock - dia.exercicios.length;
+          for (let k = 0; k < need; k++) {
+            const ex = availableExercises[k % availableExercises.length];
+            dia.exercicios.push({ exerciseId: ex.id, phase: 'principal', category: ex.category, difficulty: ex.difficulty, sets: 3, reps: '10', restSeconds: 60, notes: `Mock`, completed: false });
+          }
+        }
+      });
+      const mockSkeleton: AiJson = { resumoExecutivo: `Plano mock para ${targetName} (${duration} dias)`, dicasFinais: 'Mock — rotação em dev', dias: mockDias };
+      const totalSessionsNeededMock = Math.max(1, Math.round((duration / 7) * mockSessionsPerWeek));
+      const spacingMock = Math.max(1, Math.round(7 / mockSessionsPerWeek));
+      const exercisePoolMock = new Map<string, any[]>();
+      for (const ex of availableExercises) {
+        const key = `${ex.category}|${ex.difficulty}`;
+        if (!exercisePoolMock.has(key)) exercisePoolMock.set(key, []);
+        exercisePoolMock.get(key)!.push(ex);
+      }
+      function buildRotatedSessionMock(session: any, weekNum: number): any {
+        const rotated = (session.exercicios ?? []).map((ex: any) => {
+          const key = `${ex.category ?? ''}|${ex.difficulty ?? ''}`;
+          const pool = exercisePoolMock.get(key);
+          let r = ex;
+          if (pool && pool.length > 1) {
+            const curIdx = pool.findIndex((p) => p.id === ex.exerciseId);
+            const startIdx = curIdx >= 0 ? curIdx : 0;
+            const nextIdx = (startIdx + weekNum) % pool.length;
+            const sub = pool[nextIdx];
+            if (sub && sub.id !== ex.exerciseId) r = { ...ex, exerciseId: sub.id, name: sub.name, category: sub.category, difficulty: sub.difficulty, videoUrl: sub.videoUrl ?? null };
+          }
+          const incSets = Math.min(3, Math.floor(weekNum / 2));
+          const baseSets = parseInt(String(r.sets)) || 3;
+          const newSets = baseSets + incSets;
+          const repsStr = String(r.reps ?? '10');
+          const repsNum = parseInt(repsStr);
+          const isNum = !isNaN(repsNum) && String(repsNum) === repsStr.trim();
+          const repsInc = Math.min(4, Math.floor(weekNum / 2) * 2);
+          const newReps = isNum ? String(repsNum + repsInc) : repsStr;
+          return { ...r, sets: newSets, reps: newReps };
+        });
+        return { ...session, exercicios: rotated };
+      }
+      const allDiasMock: any[] = [];
+      for (let i = 0; i < totalSessionsNeededMock; i++) {
+        const template = mockSkeleton.dias[i % mockSkeleton.dias.length];
+        const weekNum = Math.floor(i / mockSkeleton.dias.length);
+        const actualDay = weekNum * 7 + (i % mockSkeleton.dias.length) * spacingMock + 1;
+        allDiasMock.push({ ...buildRotatedSessionMock(template, weekNum), dia: actualDay });
+      }
+      return { resumoExecutivo: mockSkeleton.resumoExecutivo ?? '', dicasFinais: mockSkeleton.dicasFinais ?? '', dias: allDiasMock };
     }
     // Config IA
     let aiProvider = 'groq';
@@ -127,8 +194,8 @@ export class AiService {
     } catch (e: any) {
       if (e?.status === 429) throw e;
       const isAuth = e?.status === 401 || e?.error?.code === 'invalid_api_key';
-      if (process.env.NODE_ENV !== 'production' && isAuth) {
-        this.logger.warn('[AI] GROQ_API_KEY inválida — fallback mock');
+      if (isAuth && process.env.AI_MOCK === 'true') {
+        this.logger.warn('[AI] GROQ_API_KEY inválida mas AI_MOCK=true — fallback mock');
         return { resumoExecutivo: `Plano mock para ${targetName} (${duration} dias)`, dicasFinais: 'Mock — fallback', dias: [{ dia: 1, titulo: 'Sessão Mock', duracaoMinutos: 60, intensidade: 'Média', descricaoCompleta: 'Treino mock', exercicios: [] }] };
       }
       throw e;
