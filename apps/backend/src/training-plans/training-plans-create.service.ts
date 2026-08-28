@@ -107,12 +107,37 @@ export class TrainingPlansCreateService {
       aiSuggestion = `Plano criado manualmente em ${new Date().toLocaleDateString('pt-BR')}.\n\nUtilize a aba "Sessões" para adicionar os treinos diários.`;
       parsedJson = { dias: [] };
     } else {
-      // RAG simplificado para teste: busca sessões/notas mas não influencia ai mock
+      // RAG — histórico de aderência + notas do treinador (portado de route.ts:308)
+      const sanitize = (s: string | null | undefined, max = 300) => {
+        if (!s) return '';
+        return String(s).replace(/```/g, "'''").replace(/^(#{1,6}|---) /gm, '').replace(/\bignore\b.*\binstructi/gi, '[removido]').slice(0, max).trim();
+      };
+      let ragContext = '';
+      const historyWindowDays = duration >= 180 ? 90 : 30;
+      const windowStart = new Date(); windowStart.setDate(windowStart.getDate() - historyWindowDays);
       try {
-        await this.prisma.trainingSession.findMany({ where: {}, take: 1 }).catch(() => []);
-        await this.prisma.studentNote.findMany({ where: {}, take: 1 }).catch(() => []);
+        const recentSessions: any[] = await (this.prisma as any).trainingSession.findMany({
+          where: studentId
+            ? { plan: { studentId }, OR: [{ createdAt: { gte: windowStart } }, { completedAt: { gte: windowStart } }] }
+            : { plan: { athleteId }, OR: [{ createdAt: { gte: windowStart } }, { completedAt: { gte: windowStart } }] },
+          select: { completed: true, athleteFeedback: true, athleteFeedbackRating: true, title: true },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        }).catch(() => []);
+        const completedCount = recentSessions.filter((s) => s.completed).length;
+        const adherenceRate = recentSessions.length > 0 ? Math.round((completedCount / recentSessions.length) * 100) : 100;
+        const ratingsArr = recentSessions.filter((s) => s.athleteFeedbackRating != null).map((s) => s.athleteFeedbackRating as number);
+        const avgRating = ratingsArr.length > 0 ? (ratingsArr.reduce((a: number, b: number) => a + b, 0) / ratingsArr.length).toFixed(1) : null;
+        const titleCount: Record<string, number> = {};
+        recentSessions.forEach((s) => { if (s.title) titleCount[s.title] = (titleCount[s.title] ?? 0) + 1; });
+        const topSessionTitles = Object.entries(titleCount).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => t).join(', ');
+        const feedbacks = recentSessions.filter((s) => s.athleteFeedback).slice(0, 3).map((s) => `- Nota ${s.athleteFeedbackRating ?? 'N/A'}/5: "${sanitize(s.athleteFeedback, 200)}"`).join('\n');
+        const notesText = studentId
+          ? await (this.prisma as any).studentNote.findMany({ where: { studentId }, orderBy: { createdAt: 'desc' }, take: 3 }).then((arr: any[]) => arr.length > 0 ? arr.map((n: any) => `- ${new Date(n.createdAt).toLocaleDateString()}: ${sanitize(n.content, 200)}`).join('\n') : 'Nenhuma anotação recente.').catch(() => 'Nenhuma anotação recente.')
+          : 'Nenhuma anotação recente.';
+        ragContext = `\n**[CONTEXTO RAG DE EVOLUÇÃO - ÚLTIMOS ${historyWindowDays} DIAS]**\n- Taxa de Aderência: ${adherenceRate}% (${completedCount}/${recentSessions.length} sessões)\n${avgRating ? `- Satisfação Média: ${avgRating}/5` : ''}\n${topSessionTitles ? `- Treinos mais frequentes: ${topSessionTitles}` : ''}\n- Feedbacks Recentes:\n${feedbacks || 'Nenhum.'}\n- Anotações do Treinador:\n${notesText}\n\n**Instrução:** Se aderência < 50%, prefira treinos mais curtos. Adapte às anotações do treinador.`;
       } catch {}
-      parsedJson = await this.ai.gerarPlano({ targetName, profile, duration, availableExercises });
+      parsedJson = await this.ai.gerarPlano({ targetName, profile, duration, availableExercises, ragContext });
       aiSuggestion = `### Resumo Executivo\n${parsedJson.resumoExecutivo ?? ''}\n\n### Dicas Finais\n${parsedJson.dicasFinais ?? ''}`;
     }
 

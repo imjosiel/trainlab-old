@@ -20,6 +20,7 @@ import { PartnerTiersModule } from '@/partner-tiers/partner-tiers.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { SportsModule } from '@/sports/sports.module';
+import { StudentNotesModule } from '@/students/student-notes.module';
 import { StudentsModule } from '@/students/students.module';
 import { TrainingPlansModule } from '@/training-plans/training-plans.module';
 import { UsersModule } from '@/users/users.module';
@@ -40,6 +41,7 @@ import { UsersModule } from '@/users/users.module';
     BillingModule,
     UsersModule,
     StudentsModule,
+    StudentNotesModule,
     CreditsModule,
     TrainingPlansModule,
     PartnerConnectModule,
