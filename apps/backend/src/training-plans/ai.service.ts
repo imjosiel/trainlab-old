@@ -48,17 +48,35 @@ export class AiService {
       return JSON.parse(cleaned) as AiJson;
     }
     const groq = this.getGroq();
-    try {
+    const tryModel = async (model: string) => {
       const r = await groq.chat.completions.create({
         messages: messages as any,
-        model: 'llama-3.1-8b-instant',
+        model,
         temperature: 0.7,
         max_tokens: maxTokens,
         response_format: { type: 'json_object' } as any,
       });
       return JSON.parse(r.choices?.[0]?.message?.content ?? '{}') as AiJson;
+    };
+    try {
+      try {
+        return await tryModel('openai/gpt-oss-20b');
+      } catch (e: any) {
+        const status = e?.status ?? e?.statusCode;
+        const isModelNotFound = e?.error?.code === 'model_not_found' || status === 404 || status === 400;
+        if (isModelNotFound) {
+          this.logger.warn('[AI] modelo gpt-oss-20b não encontrado, tentando allam-2-7b');
+          return await tryModel('allam-2-7b');
+        }
+        throw e;
+      }
     } catch (e: any) {
       const status = e?.status ?? e?.statusCode;
+      const isModelNotFound = e?.error?.code === 'model_not_found' || e?.message?.includes('model_not_found') || status === 404;
+      if (process.env.AI_MOCK === 'true' && isModelNotFound) {
+        this.logger.warn('[AI] Groq model not found — fallback mock');
+        return { resumoExecutivo: 'Mock fallback model_not_found', dicasFinais: 'Mock', dias: [{ dia: 1, titulo: 'Sessão Mock', duracaoMinutos: 60, intensidade: 'Média', descricaoCompleta: 'Mock', exercicios: [] }] } as AiJson;
+      }
       if (status === 429 && process.env.LOCAL_AI_URL) {
         this.logger.warn('[AI] Groq 429, fallback local');
         const localRes = await fetch(`${process.env.LOCAL_AI_URL}/v1/chat/completions`, {
@@ -221,6 +239,22 @@ export class AiService {
       this.logger.error('[AI] Batch falhou', (e as Error).message);
       weekTemplate.forEach((d) => { if (!d.exercicios) d.exercicios = []; });
     }
+    // Fallback para dias que a IA não preencheu (partial batch) — preenche com exercícios da biblioteca
+    weekTemplate.forEach((d: any) => {
+      if (!d.exercicios || d.exercicios.length === 0) {
+        d.exercicios = availableExercises.slice(0, exPerSession).map((ex: any, idx: number) => ({
+          exerciseId: ex.id,
+          phase: idx === 0 ? 'aquecimento' : idx === exPerSession - 1 ? 'volta_a_calma' : 'principal',
+          category: ex.category,
+          difficulty: ex.difficulty,
+          sets: 3,
+          reps: '10',
+          restSeconds: 60,
+          notes: `Seleção fallback`,
+          completed: false,
+        }));
+      }
+    });
     // Replicação + rotação + sobrecarga (portado do legado)
     const exercisePool = new Map<string, any[]>();
     for (const ex of availableExercises) {
