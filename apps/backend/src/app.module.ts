@@ -19,6 +19,7 @@ import { PartnerConnectModule } from '@/partner-connect/partner-connect.module';
 import { PartnerTiersModule } from '@/partner-tiers/partner-tiers.module';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
+import { AdminModule } from '@/admin/admin.module';
 import { SportsModule } from '@/sports/sports.module';
 import { StudentNotesModule } from '@/students/student-notes.module';
 import { StudentsModule } from '@/students/students.module';
@@ -42,6 +43,7 @@ import { UsersModule } from '@/users/users.module';
     UsersModule,
     StudentsModule,
     StudentNotesModule,
+    AdminModule,
     CreditsModule,
     TrainingPlansModule,
     PartnerConnectModule,
