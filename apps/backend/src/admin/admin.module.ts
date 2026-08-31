@@ -20,5 +20,7 @@ import { AdminTiersController } from './admin-tiers.controller';
 import { AdminTiersService } from './admin-tiers.service';
 import { AdminUsersController } from './admin-users.controller';
 import { AdminUsersService } from './admin-users.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminOverviewController, AdminPlatformFinanceController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminOverviewService, AdminPlatformFinanceService] })
+import { AdminVideoProcessorController } from './admin-video-processor.controller';
+import { AdminVideoProcessorService } from './admin-video-processor.service';
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminOverviewController, AdminPlatformFinanceController, AdminVideoProcessorController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminOverviewService, AdminPlatformFinanceService, AdminVideoProcessorService] })
 export class AdminModule {}
