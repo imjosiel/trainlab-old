@@ -17,6 +17,8 @@ import { AdminOverviewService } from './admin-overview.service';
 import { AdminPlatformFinanceController } from './admin-platform-finance.controller';
 import { AdminPlatformFinanceService } from './admin-platform-finance.service';
 import { AdminTiersController } from './admin-tiers.controller';
+import { AdminTiersIdController } from './admin-tiers-id.controller';
+import { AdminTiersIdService } from './admin-tiers-id.service';
 import { AdminTiersService } from './admin-tiers.service';
 import { AdminUsersActionsController } from './admin-users-actions.controller';
 import { AdminUsersActionsService } from './admin-users-actions.service';
@@ -24,5 +26,5 @@ import { AdminUsersController } from './admin-users.controller';
 import { AdminUsersService } from './admin-users.service';
 import { AdminVideoProcessorController } from './admin-video-processor.controller';
 import { AdminVideoProcessorService } from './admin-video-processor.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminOverviewController, AdminPlatformFinanceController, AdminVideoProcessorController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminOverviewService, AdminPlatformFinanceService, AdminVideoProcessorService] })
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPlatformFinanceController, AdminVideoProcessorController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPlatformFinanceService, AdminVideoProcessorService] })
 export class AdminModule {}
