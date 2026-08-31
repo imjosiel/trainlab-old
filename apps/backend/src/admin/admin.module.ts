@@ -12,9 +12,11 @@ import { AdminFinanceController } from './admin-finance.controller';
 import { AdminFinanceService } from './admin-finance.service';
 import { AdminSettingsController } from './admin-settings.controller';
 import { AdminSettingsService } from './admin-settings.service';
+import { AdminOverviewController } from './admin-overview.controller';
+import { AdminOverviewService } from './admin-overview.service';
 import { AdminTiersController } from './admin-tiers.controller';
 import { AdminTiersService } from './admin-tiers.service';
 import { AdminUsersController } from './admin-users.controller';
 import { AdminUsersService } from './admin-users.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService] })
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminOverviewController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminOverviewService] })
 export class AdminModule {}
