@@ -10,12 +10,14 @@ import { AdminAuditLogsController } from './admin-audit-logs.controller';
 import { AdminAuditLogsService } from './admin-audit-logs.service';
 import { AdminFinanceController } from './admin-finance.controller';
 import { AdminFinanceService } from './admin-finance.service';
-import { AdminSettingsController } from './admin-settings.controller';
-import { AdminSettingsService } from './admin-settings.service';
 import { AdminOverviewController } from './admin-overview.controller';
 import { AdminOverviewService } from './admin-overview.service';
 import { AdminPlatformFinanceController } from './admin-platform-finance.controller';
 import { AdminPlatformFinanceService } from './admin-platform-finance.service';
+import { AdminR2StorageController } from './admin-r2-storage.controller';
+import { AdminR2StorageService } from './admin-r2-storage.service';
+import { AdminSettingsController } from './admin-settings.controller';
+import { AdminSettingsService } from './admin-settings.service';
 import { AdminTiersController } from './admin-tiers.controller';
 import { AdminTiersIdController } from './admin-tiers-id.controller';
 import { AdminTiersIdService } from './admin-tiers-id.service';
@@ -26,5 +28,5 @@ import { AdminUsersController } from './admin-users.controller';
 import { AdminUsersService } from './admin-users.service';
 import { AdminVideoProcessorController } from './admin-video-processor.controller';
 import { AdminVideoProcessorService } from './admin-video-processor.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPlatformFinanceController, AdminVideoProcessorController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPlatformFinanceService, AdminVideoProcessorService] })
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminAffiliatesController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPlatformFinanceController, AdminR2StorageController, AdminVideoProcessorController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminAffiliatesService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPlatformFinanceService, AdminR2StorageService, AdminVideoProcessorService] })
 export class AdminModule {}
