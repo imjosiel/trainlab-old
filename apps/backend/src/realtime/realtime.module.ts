@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 
+import { PusherAuthController } from './pusher-auth.controller';
 import { RealtimeService } from './realtime.service';
 
 /**
@@ -9,6 +10,7 @@ import { RealtimeService } from './realtime.service';
  */
 @Global()
 @Module({
+  controllers: [PusherAuthController],
   providers: [RealtimeService],
   exports: [RealtimeService],
 })
