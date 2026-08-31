@@ -6,5 +6,7 @@ import { AdminReportsController } from './admin-reports.controller';
 import { AdminReportsService } from './admin-reports.service';
 import { AdminSettingsController } from './admin-settings.controller';
 import { AdminSettingsService } from './admin-settings.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService] })
+import { AdminUsersController } from './admin-users.controller';
+import { AdminUsersService } from './admin-users.service';
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService] })
 export class AdminModule {}
