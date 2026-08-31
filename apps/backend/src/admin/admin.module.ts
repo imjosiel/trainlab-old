@@ -8,7 +8,9 @@ import { AdminSettingsController } from './admin-settings.controller';
 import { AdminSettingsService } from './admin-settings.service';
 import { AdminAffiliatesController } from './admin-affiliates.controller';
 import { AdminAffiliatesService } from './admin-affiliates.service';
+import { AdminAuditLogsController } from './admin-audit-logs.controller';
+import { AdminAuditLogsService } from './admin-audit-logs.service';
 import { AdminUsersController } from './admin-users.controller';
 import { AdminUsersService } from './admin-users.service';
-@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService] })
+@Module({ controllers: [AdminPartnersController, AdminReportsController, AdminSettingsController, AdminUsersController, AdminAffiliatesController, AdminAuditLogsController], providers: [AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminSettingsService, AdminUsersService, AdminAffiliatesService, AdminAuditLogsService] })
 export class AdminModule {}
