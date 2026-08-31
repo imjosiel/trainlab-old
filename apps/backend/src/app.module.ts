@@ -24,6 +24,7 @@ import { SportsModule } from '@/sports/sports.module';
 import { StudentNotesModule } from '@/students/student-notes.module';
 import { StudentsModule } from '@/students/students.module';
 import { TrainingPlansModule } from '@/training-plans/training-plans.module';
+import { UploadModule } from '@/upload/upload.module';
 import { UsersModule } from '@/users/users.module';
 
 @Module({
@@ -46,6 +47,7 @@ import { UsersModule } from '@/users/users.module';
     AdminModule,
     CreditsModule,
     TrainingPlansModule,
+    UploadModule,
     PartnerConnectModule,
     AffiliatesModule,
     ExercisesModule,
