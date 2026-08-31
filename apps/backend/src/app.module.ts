@@ -23,6 +23,7 @@ import { AdminModule } from '@/admin/admin.module';
 import { SportsModule } from '@/sports/sports.module';
 import { StudentNotesModule } from '@/students/student-notes.module';
 import { StudentsModule } from '@/students/students.module';
+import { TeamsModule } from '@/teams/teams.module';
 import { TrainingPlansModule } from '@/training-plans/training-plans.module';
 import { UploadModule } from '@/upload/upload.module';
 import { UsersModule } from '@/users/users.module';
@@ -47,6 +48,7 @@ import { UsersModule } from '@/users/users.module';
     AdminModule,
     CreditsModule,
     TrainingPlansModule,
+    TeamsModule,
     UploadModule,
     PartnerConnectModule,
     AffiliatesModule,
