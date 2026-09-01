@@ -28,6 +28,7 @@ import { InvitesModule } from '@/invites/invites.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
 import { OnboardingModule } from '@/onboarding/onboarding.module';
 import { PublicModule } from '@/public/public.module';
+import { PartnerMetricsModule } from '@/partner-metrics/partner-metrics.module';
 import { PartnerSettingsModule } from '@/partner-settings/partner-settings.module';
 import { TrainingPlansModule } from '@/training-plans/training-plans.module';
 import { UploadModule } from '@/upload/upload.module';
@@ -55,6 +56,7 @@ import { UsersModule } from '@/users/users.module';
     TrainingPlansModule,
     DashboardModule,
     OnboardingModule,
+    PartnerMetricsModule,
     PartnerSettingsModule,
     PublicModule,
     TeamsModule,
