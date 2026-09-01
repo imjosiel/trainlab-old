@@ -8,6 +8,8 @@ import { B2BWebhookController } from './b2b-webhook.controller';
 import { B2BWebhookService } from './b2b-webhook.service';
 import { OffersController, PublicOffersController } from './offers.controller';
 import { OffersService } from './offers.service';
+import { SaasCheckoutController } from './saas-checkout.controller';
+import { SaasCheckoutService } from './saas-checkout.service';
 import { StripeCheckoutController } from './stripe-checkout.controller';
 import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeService } from './stripe.service';
@@ -37,6 +39,7 @@ import { WebhookConnectService } from './webhook-connect.service';
     AdminSubscriptionsController,
     B2BWebhookController,
     StripeCheckoutController,
+    SaasCheckoutController,
     WebhookConnectController,
   ],
   providers: [
@@ -47,6 +50,7 @@ import { WebhookConnectService } from './webhook-connect.service';
     SubscriptionsService,
     AdminSubscriptionsService,
     B2BWebhookService,
+    SaasCheckoutService,
     StripeCheckoutService,
     WebhookConnectService,
   ],
