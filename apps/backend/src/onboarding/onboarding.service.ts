@@ -30,6 +30,32 @@ export class OnboardingService {
       const digits = String(phone).replace(/\D/g, '').replace(/^55/,'');
       if (digits.length >= 10 && digits.length <= 11) phoneData.phone = digits.length===11 ? `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}` : `(${digits.slice(0,2)}) ${digits.slice(2,6)}-${digits.slice(6)}`;
     }
+    // Cria PartnerAccount / AffiliateAccount quando necessário (BUG que deixou josielcardosomercio@gmail.com com role sem conta)
+    if (role === 'PARTNER_B2B') {
+      const existingPA: any = await this.prisma.partnerAccount.findUnique({ where: { userId: session.id } });
+      if (!existingPA) {
+        const settings: any = await this.prisma.systemSettings.findFirst({ select: { autoApprovePartners: true } }).catch(() => null);
+        const autoApprove = settings?.autoApprovePartners !== false;
+        const starter: any = await this.prisma.partnerTier.findFirst({ where: { isDefault: true, isActive: true } }).catch(() => null);
+        await this.prisma.partnerAccount.create({
+          data: {
+            userId: session.id,
+            status: autoApprove ? 'approved' : 'pending',
+            partnerTier: starter?.slug ?? 'starter',
+            tierId: starter?.id ?? null,
+            commissionRate: starter?.commissionRate ?? 0.50,
+            approvedAt: autoApprove ? new Date() : null,
+          },
+        }).catch((e: any) => { if (e.code !== 'P2002') throw e; });
+      }
+    }
+    if (role === 'AFFILIATE') {
+      const existingAA: any = await this.prisma.affiliateAccount.findUnique({ where: { userId: session.id } }).catch(() => null);
+      if (!existingAA) {
+        const code = `aff-${session.id.slice(0, 8)}-${Date.now().toString(36)}`;
+        await this.prisma.affiliateAccount.create({ data: { userId: session.id, referralCode: code, status: 'approved' } }).catch((e: any) => { if (e.code !== 'P2002') throw e; });
+      }
+    }
     const now = new Date();
     const consent: any = {};
     if (!atual?.termsAcceptedAt) { consent.termsAcceptedAt = now; consent.termsVersion = '2026-07-06'; }
