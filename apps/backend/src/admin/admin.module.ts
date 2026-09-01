@@ -24,6 +24,8 @@ import { AdminMetricsB2bController } from './admin-metrics-b2b.controller';
 import { AdminMetricsB2bService } from './admin-metrics-b2b.service';
 import { AdminOverviewController } from './admin-overview.controller';
 import { AdminOverviewService } from './admin-overview.service';
+import { AdminPartnersPayoutsController } from './admin-partners-payouts.controller';
+import { AdminPartnersPayoutsService } from './admin-partners-payouts.service';
 import { AdminPartnersRevenueController } from './admin-partners-revenue.controller';
 import { AdminPartnersRevenueService } from './admin-partners-revenue.service';
 import { AdminPlatformFinanceController } from './admin-platform-finance.controller';
@@ -49,11 +51,11 @@ import { AdminVideoProcessorService } from './admin-video-processor.service';
 @Module({
   controllers: [
     AdminPartnersController, AdminReportsController, AdminReportsExportController, AdminReportsIdController, AdminReportsPublishController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminUsersSearchController,
-    AdminAffiliatesController, AdminAffiliatesReservedController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPartnersRevenueController, AdminPlatformFinanceController, AdminR2StorageController, AdminStripeConnectController, AdminVideoProcessorController, AdminCloudinaryController, AdminMetricsB2bController,
+    AdminAffiliatesController, AdminAffiliatesReservedController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPartnersPayoutsController, AdminPartnersRevenueController, AdminPlatformFinanceController, AdminR2StorageController, AdminStripeConnectController, AdminVideoProcessorController, AdminCloudinaryController, AdminMetricsB2bController,
   ],
   providers: [
     AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminReportsExportService, AdminReportsIdService, AdminReportsPublishService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminUsersSearchService,
-    AdminAffiliatesService, AdminAffiliatesReservedService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPartnersRevenueService, AdminPlatformFinanceService, AdminR2StorageService, AdminStripeConnectService, AdminVideoProcessorService, AdminCloudinaryService, AdminMetricsB2bService,
+    AdminAffiliatesService, AdminAffiliatesReservedService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPartnersPayoutsService, AdminPartnersRevenueService, AdminPlatformFinanceService, AdminR2StorageService, AdminStripeConnectService, AdminVideoProcessorService, AdminCloudinaryService, AdminMetricsB2bService,
   ],
 })
 export class AdminModule {}
