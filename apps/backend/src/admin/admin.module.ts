@@ -4,6 +4,8 @@ import { AdminPartnersService } from './admin-partners.service';
 import { AdminPartnersActionsService } from './admin-partners-actions.service';
 import { AdminReportsController } from './admin-reports.controller';
 import { AdminReportsService } from './admin-reports.service';
+import { AdminReportsExportController } from './admin-reports-export.controller';
+import { AdminReportsExportService } from './admin-reports-export.service';
 import { AdminReportsIdController } from './admin-reports-id.controller';
 import { AdminReportsIdService } from './admin-reports-id.service';
 import { AdminReportsPublishController } from './admin-reports-publish.controller';
@@ -46,11 +48,11 @@ import { AdminVideoProcessorController } from './admin-video-processor.controlle
 import { AdminVideoProcessorService } from './admin-video-processor.service';
 @Module({
   controllers: [
-    AdminPartnersController, AdminReportsController, AdminReportsIdController, AdminReportsPublishController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminUsersSearchController,
+    AdminPartnersController, AdminReportsController, AdminReportsExportController, AdminReportsIdController, AdminReportsPublishController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminUsersSearchController,
     AdminAffiliatesController, AdminAffiliatesReservedController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPartnersRevenueController, AdminPlatformFinanceController, AdminR2StorageController, AdminStripeConnectController, AdminVideoProcessorController, AdminCloudinaryController, AdminMetricsB2bController,
   ],
   providers: [
-    AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminReportsIdService, AdminReportsPublishService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminUsersSearchService,
+    AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminReportsExportService, AdminReportsIdService, AdminReportsPublishService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminUsersSearchService,
     AdminAffiliatesService, AdminAffiliatesReservedService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPartnersRevenueService, AdminPlatformFinanceService, AdminR2StorageService, AdminStripeConnectService, AdminVideoProcessorService, AdminCloudinaryService, AdminMetricsB2bService,
   ],
 })
