@@ -221,6 +221,14 @@ describe('TrainingPlansService', () => {
       await expect(service.buscar('plan-1', sessao())).resolves.toBeDefined();
       expect(prisma.partnerAccount.findFirst).not.toHaveBeenCalled();
     });
+
+    it('BOTH: trainer que também é CLIENT vê seu próprio plano sem precisar de assinatura', async () => {
+      prisma.trainingPlan.findUnique.mockResolvedValue(
+        planRow({ trainerId: TRAINER, studentId: 'stu-1', student: { id: 'stu-1', userId: 'outro-aluno', user: {} } }),
+      );
+      await expect(service.buscar('plan-1', sessao({ id: TRAINER, roles: ['PROFESSIONAL', 'CLIENT'] }))).resolves.toBeDefined();
+      expect(prisma.partnerSubscription.findFirst).not.toHaveBeenCalled();
+    });
   });
 
   /* ────────────────────────────────────────────────────────────────────────

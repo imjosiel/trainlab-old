@@ -21,6 +21,7 @@ export class OnboardingService {
     if (!role || !VALID.includes(role)) throw new BadRequestException({ error: 'Role inválido.' });
     const atual: any = await this.prisma.user.findUnique({ where: { id: session.id }, select: { roles: true, termsAcceptedAt: true, privacyAcceptedAt: true } });
     const preservados = (atual?.roles ?? []).filter((r: string) => !['PENDING','PROFESSIONAL','INDIVIDUAL','CLIENT'].includes(r));
+    if (role === 'BOTH') throw new BadRequestException({ error: 'Role BOTH depreciado. Use PROFESSIONAL ou INDIVIDUAL.' });
     let escolhidos: string[] = [role];
     if (role === 'PARTNER_B2B') escolhidos = ['PROFESSIONAL','PARTNER_B2B'];
     if (role === 'CLIENT') escolhidos = Array.from(new Set([...(atual?.roles ?? []), 'CLIENT']));

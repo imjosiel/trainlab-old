@@ -131,7 +131,7 @@ export class TrainingPlansService {
       throw new ForbiddenException({ error: 'Forbidden' });
     }
 
-    if (isOwnerStudent || isOwnerAthlete) {
+    if ((isOwnerStudent || isOwnerAthlete) && !isTrainer) {
       const trainerPartnerAccount = plan.trainerId
         ? await this.prisma.partnerAccount.findFirst({ where: { userId: plan.trainerId }, select: { id: true } })
         : null;
