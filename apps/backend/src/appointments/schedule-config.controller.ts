@@ -12,7 +12,8 @@ import {
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import { ROLES } from '@/common/constants';
-import { ScheduleConfigService, UpdateScheduleConfigBody } from './schedule-config.service';
+import { ScheduleConfigService } from './schedule-config.service';
+import { UpdateScheduleConfigBody } from './dtos';
 
 @ApiTags('appointments')
 @ApiBearerAuth()

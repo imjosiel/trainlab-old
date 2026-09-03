@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
+import { CreateNoteBody } from './dtos';
 import { StudentNotesService } from './student-notes.service';
 
 @ApiTags('student-notes')
@@ -18,7 +19,7 @@ export class StudentNotesController {
 
   @Post()
   @ApiOperation({ summary: 'Cria anotação para o aluno.' })
-  criar(@CurrentUser() user: SessionPayload, @Param('studentId') studentId: string, @Body() body: { content: string }) {
+  criar(@CurrentUser() user: SessionPayload, @Param('studentId') studentId: string, @Body() body: CreateNoteBody) {
     return this.notes.criar(user.id, studentId, body.content);
   }
 

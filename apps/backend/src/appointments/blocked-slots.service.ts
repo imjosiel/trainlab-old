@@ -2,17 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { PrismaService } from '@/prisma/prisma.service';
 import { ScheduleConfigService } from './schedule-config.service';
+import { CreateBlockedSlotBody } from './dtos';
 
 export interface ListBlockedSlotsQuery {
   from?: string;
   to?: string;
-}
-
-export interface CreateBlockedSlotBody {
-  label?: unknown;
-  startTime?: unknown;
-  endTime?: unknown;
-  isRecurring?: unknown;
 }
 
 @Injectable()

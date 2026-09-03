@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation,
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import { CreateSessionBody, EditSessionBody, TrainingSessionsService, UpdateSessionBody } from './training-sessions.service';
+import { TrainingSessionsService } from './training-sessions.service';
+import { CreateSessionBody, EditSessionBody, UpdateSessionBody } from './dtos';
 
 @ApiTags('training-plans')
 @ApiBearerAuth()

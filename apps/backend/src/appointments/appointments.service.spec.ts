@@ -248,7 +248,9 @@ describe('AppointmentsService', () => {
       ['sem studentId nem athleteId', { ...valido, athleteId: undefined, studentId: undefined }],
       ['title acima de 150', { ...valido, title: 'a'.repeat(151) }],
     ])('%s → 400 e o Google NÃO é chamado', async (_rotulo, body) => {
-      await expect(service.create(sessao(), body)).rejects.toBeInstanceOf(BadRequestException);
+      // Corpo inválido de propósito: o service valida sozinho (dupla
+      // barreira D104 — o pipe barra na borda, o service barra aqui).
+      await expect(service.create(sessao(), body as never)).rejects.toBeInstanceOf(BadRequestException);
       expect(calendar.criarEvento).not.toHaveBeenCalled();
     });
 

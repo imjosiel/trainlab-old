@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation,
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import { CreateStudentBody, StudentsService, UpdateStudentProfileBody } from './students.service';
+import { StudentsService, UpdateStudentProfileBody } from './students.service';
+import { CreateStudentBody } from './dtos';
 
 @ApiTags('students')
 @ApiBearerAuth()

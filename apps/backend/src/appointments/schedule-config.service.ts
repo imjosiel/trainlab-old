@@ -2,12 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '@/prisma/prisma.service';
 import { inteiroNaFaixa } from '@/common/numeros';
-
-export interface UpdateScheduleConfigBody {
-  workStartHour?: unknown;
-  workEndHour?: unknown;
-  workDays?: unknown;
-}
+import { UpdateScheduleConfigBody } from './dtos';
 
 const PADRAO = { workStartHour: 7, workEndHour: 22, workDays: [1, 2, 3, 4, 5] };
 const COM_BLOQUEIOS = { blockedSlots: { orderBy: { startTime: 'asc' } } } as const;

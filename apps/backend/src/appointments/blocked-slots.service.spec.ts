@@ -83,7 +83,8 @@ describe('BlockedSlotsService', () => {
       ['startTime inválido', { ...valido, startTime: 'ontem' }],
       ['endTime inválido', { ...valido, endTime: 'amanhã' }],
     ])('%s → 400', async (_rotulo, body) => {
-      await expect(service.create(EU, body)).rejects.toBeInstanceOf(BadRequestException);
+      // Corpo inválido de propósito (dupla barreira D104).
+      await expect(service.create(EU, body as never)).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.blockedSlot.create).not.toHaveBeenCalled();
     });
 

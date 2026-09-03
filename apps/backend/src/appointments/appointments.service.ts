@@ -14,6 +14,7 @@ import { parsePage } from '@/common/pagination';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { CalendarService } from './calendar.service';
+import { CreateAppointmentBody, UpdateAppointmentBody } from './dtos';
 
 export interface ListAppointmentsQuery {
   status?: string;
@@ -21,25 +22,6 @@ export interface ListAppointmentsQuery {
   to?: string;
   page?: string;
   trainerId?: string;
-}
-
-export interface CreateAppointmentBody {
-  title?: unknown;
-  scheduledAt?: unknown;
-  durationMinutes?: unknown;
-  location?: unknown;
-  description?: unknown;
-  studentId?: unknown;
-  athleteId?: unknown;
-  trainingPlanId?: unknown;
-  trainerNotes?: unknown;
-  createMeet?: unknown;
-}
-
-export interface UpdateAppointmentBody extends Partial<CreateAppointmentBody> {
-  action?: unknown;
-  status?: unknown;
-  cancelReason?: unknown;
 }
 
 export type AcaoDeConfirmacao = 'confirm' | 'cancel';

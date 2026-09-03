@@ -5,14 +5,7 @@ import { SessionPayload } from '@/auth/session-payload';
 import { ROLES, PLAN_STATUS } from '@/common/constants';
 import { AiService } from './ai.service';
 import { TrainingPlansLimitsService } from './training-plans-limits.service';
-
-export interface CreatePlanBody {
-  studentId?: string | null;
-  athleteId?: string | null;
-  profileId?: string | null;
-  duration?: number | string | null;
-  isManual?: boolean | null;
-}
+import { CreatePlanBody } from './dtos';
 
 @Injectable()
 export class TrainingPlansCreateService {

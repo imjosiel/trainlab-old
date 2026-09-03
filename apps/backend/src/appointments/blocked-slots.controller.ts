@@ -22,7 +22,8 @@ import {
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import { ROLES } from '@/common/constants';
-import { BlockedSlotsService, CreateBlockedSlotBody } from './blocked-slots.service';
+import { BlockedSlotsService } from './blocked-slots.service';
+import { CreateBlockedSlotBody } from './dtos';
 
 @ApiTags('appointments')
 @ApiBearerAuth()

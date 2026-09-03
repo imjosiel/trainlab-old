@@ -1,10 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation, ApiQuery, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import { ListPlansQuery, TrainingPlansService, UpdatePlanBody } from './training-plans.service';
-import { CreatePlanBody, TrainingPlansCreateService } from './training-plans-create.service';
+import { TrainingPlansService } from './training-plans.service';
+import { TrainingPlansCreateService } from './training-plans-create.service';
+import { CreatePlanBody, ListPlansQuery, UpdatePlanBody } from './dtos';
 
 @ApiTags('training-plans')
 @ApiBearerAuth()
@@ -57,6 +59,7 @@ export class TrainingPlansController {
 
   @Post()
   @ApiOperation({ summary: 'Cria plano (manual ou via IA com RAG + créditos).' })
+  @Throttle({ default: { limit: 100, ttl: 3_600_000 } })
   criar(@CurrentUser() user: SessionPayload, @Body() body: CreatePlanBody) {
     return this.creator.criar(user, body);
   }

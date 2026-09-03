@@ -26,11 +26,9 @@ import {
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { Public } from '@/auth/public.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import {
-  AppointmentsService,
-  CreateAppointmentBody,
-  UpdateAppointmentBody,
-} from './appointments.service';
+import { AppointmentsService } from './appointments.service';
+import { CreateAppointmentBody, UpdateAppointmentBody } from './dtos';
+import { ConfirmAppointmentBody } from './confirm-dto';
 
 @ApiTags('appointments')
 @ApiBearerAuth()
@@ -72,7 +70,7 @@ export class AppointmentsController {
     description:
       'Duas requisições simultâneas: uma responde 200 e a outra 409 — nunca 500 (D68).',
   })
-  confirmByToken(@Param('token') token: string, @Body() body: { action?: unknown }) {
+  confirmByToken(@Param('token') token: string, @Body() body: ConfirmAppointmentBody) {
     return this.appointments.confirmByToken(token, body?.action);
   }
 

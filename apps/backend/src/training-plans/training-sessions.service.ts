@@ -4,29 +4,7 @@ import { SessionPayload } from '@/auth/session-payload';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { NotificationsService } from '@/notifications/notifications.service';
-
-export interface UpdateSessionBody {
-  completed?: unknown;
-  athleteFeedback?: unknown;
-  athleteFeedbackRating?: unknown;
-  exercises?: unknown;
-}
-
-export interface EditSessionBody {
-  title?: unknown;
-  day?: unknown;
-  duration?: unknown;
-  description?: unknown;
-  exercises?: unknown;
-}
-
-export interface CreateSessionBody {
-  title?: unknown;
-  description?: unknown;
-  exercises?: unknown;
-  day?: unknown;
-  duration?: unknown;
-}
+import { CreateSessionBody, EditSessionBody, UpdateSessionBody } from './dtos';
 
 function ehDono(session: {
   plan: { athleteId: string | null; trainerId: string | null; student: { userId: string | null } | null };
