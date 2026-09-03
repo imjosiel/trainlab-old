@@ -13,11 +13,9 @@ import {
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import {
-  CreateConversationBody,
-  MessagesService,
-  SendMessageBody,
-} from './messages.service';
+import { ListConversationsQuery, ListMessagesQuery } from '@/common/queries';
+import { MessagesService } from './messages.service';
+import { CreateConversationBody, SendMessageBody } from './dtos';
 
 @ApiTags('conversations')
 @ApiBearerAuth()
@@ -50,8 +48,8 @@ export class MessagesController {
       },
     },
   })
-  listConversations(@CurrentUser() user: SessionPayload, @Query('cursor') cursor?: string) {
-    return this.messages.listConversations(user.id, { cursor });
+  listConversations(@CurrentUser() user: SessionPayload, @Query() query: ListConversationsQuery) {
+    return this.messages.listConversations(user.id, query);
   }
 
   @Post()
@@ -79,9 +77,9 @@ export class MessagesController {
   listMessages(
     @Param('id') id: string,
     @CurrentUser() user: SessionPayload,
-    @Query('before') before?: string,
+    @Query() query: ListMessagesQuery,
   ) {
-    return this.messages.listMessages(id, user.id, { before });
+    return this.messages.listMessages(id, user.id, query);
   }
 
   @Post(':id/messages')

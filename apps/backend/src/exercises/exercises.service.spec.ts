@@ -223,7 +223,8 @@ describe('ExercisesService', () => {
       ['difficulty', { ...CAMPOS_VALIDOS, difficulty: undefined }],
     ])('400 quando falta %s', async (_campo, body) => {
       prisma.partnerAccount.findUnique.mockResolvedValue({ status: 'approved' });
-      const resposta = await bodyOfRejection(service.criar(sessao(), body));
+      // Corpo inválido de propósito (dupla barreira D104).
+      const resposta = await bodyOfRejection(service.criar(sessao(), body as never));
       expect(resposta.error).toMatch(/obrigat/i);
     });
 

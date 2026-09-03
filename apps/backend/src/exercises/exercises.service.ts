@@ -5,35 +5,8 @@ import { ROLES } from '@/common/constants';
 import { parseLimit, parsePage } from '@/common/pagination';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ExerciseStorageService } from './exercise-storage.service';
-
-export interface ListarExerciciosQuery {
-  category?: string;
-  q?: string;
-  search?: string;
-  page?: string;
-  limit?: string;
-  ids?: string;
-}
-
-export interface CriarExercicioBody {
-  name?: unknown;
-  description?: unknown;
-  category?: unknown;
-  difficulty?: unknown;
-  videoUrl?: unknown;
-  videoPublicId?: unknown;
-  hlsProcessed?: unknown;
-  originalVideoKey?: unknown;
-}
-
-export interface AtualizarExercicioBody {
-  name?: string;
-  description?: string;
-  category?: string;
-  difficulty?: string;
-  videoUrl?: string;
-  videoPublicId?: string;
-}
+import { AtualizarExercicioBody, CriarExercicioBody } from './dtos';
+import { ListarExerciciosQuery } from '@/common/queries';
 
 const VALID_CATEGORIES = [
   'Técnico',

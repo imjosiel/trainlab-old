@@ -1,14 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import {
-  AtualizarExercicioBody,
-  CriarExercicioBody,
-  ExercisesService,
-  ListarExerciciosQuery,
-} from './exercises.service';
+import { ExercisesService } from './exercises.service';
+import { AtualizarExercicioBody, CriarExercicioBody } from './dtos';
+import { ListarExerciciosQuery } from '@/common/queries';
 
 @ApiTags('exercises')
 @ApiBearerAuth()
@@ -25,6 +23,7 @@ export class ExercisesController {
 
   @Post()
   @ApiOperation({ summary: 'Cria exercício.' })
+  @Throttle({ default: { limit: 50, ttl: 3_600_000 } })
   criar(@CurrentUser() user: SessionPayload, @Body() body: CriarExercicioBody) {
     return this.exercises.criar(user, body);
   }

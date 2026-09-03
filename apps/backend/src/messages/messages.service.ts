@@ -8,23 +8,8 @@ import {
 
 import { PrismaService } from '@/prisma/prisma.service';
 import { RealtimeService } from '@/realtime/realtime.service';
-
-export interface ListConversationsQuery {
-  cursor?: string;
-}
-
-export interface CreateConversationBody {
-  trainerId?: unknown;
-  studentId?: unknown;
-}
-
-export interface ListMessagesQuery {
-  before?: string;
-}
-
-export interface SendMessageBody {
-  content?: unknown;
-}
+import { ListConversationsQuery, ListMessagesQuery } from '@/common/queries';
+import { CreateConversationBody, SendMessageBody } from './dtos';
 
 const CONV_PAGE = 50;
 const MSG_PAGE = 50;

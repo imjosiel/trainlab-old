@@ -8,7 +8,8 @@ import {
 } from '@nestjs/swagger';
 
 import { AdminOnly } from '@/auth/admin-only.decorator';
-import { CreateSportInput, SportsService, UpdateSportInput } from './sports.service';
+import { SportsService } from './sports.service';
+import { CreateSportInput, UpdateSportInput } from './dtos';
 
 /**
  * `@AdminOnly()` na classe: vale para todos os handlers, então um método novo

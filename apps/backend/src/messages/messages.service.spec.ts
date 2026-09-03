@@ -229,7 +229,8 @@ describe('MessagesService', () => {
 
   describe('createConversation (D63)', () => {
     it('exige os dois ids', async () => {
-      const body = await bodyOfRejection(service.createConversation(EU, { trainerId: EU }));
+      // Corpo inválido de propósito (dupla barreira D104).
+      const body = await bodyOfRejection(service.createConversation(EU, { trainerId: EU } as never));
       expect(body).toEqual({ error: expect.stringMatching(/obrigat/i) });
     });
 
@@ -317,7 +318,8 @@ describe('MessagesService', () => {
       ['só quebra de linha', '\n\n'],
       ['ausente', undefined],
     ])('rejeita conteúdo %s', async (_rotulo, content) => {
-      await expect(service.sendMessage(CONV, EU, { content })).rejects.toBeInstanceOf(
+      // Corpo inválido de propósito (dupla barreira D104).
+      await expect(service.sendMessage(CONV, EU, { content } as never)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });
