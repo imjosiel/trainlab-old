@@ -11,6 +11,7 @@ function prismaMock() {
     sport: { findUnique: jest.fn(), findFirst: jest.fn() },
     partnerAccount: { findUnique: jest.fn() },
     partnerTier: { findFirst: jest.fn() },
+    saaSTier: { findFirst: jest.fn() },
     athleteInvite: { upsert: jest.fn() },
     athleteProfile: { findMany: jest.fn(), deleteMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   };
@@ -49,7 +50,9 @@ function sessao(over: Partial<SessionPayload> = {}): SessionPayload {
     systemRoles: ['USER'],
     isAdmin: false,
     subscriptionStatus: null,
-    subscriptionPlan: null,
+    // Default: assinatura SaaS ativa no token (callback jwt a preenche — D4).
+    // Testes de free sobrescrevem com null.
+    subscriptionPlan: 'Base',
     stripeCustomerId: null,
     ...over,
   };
@@ -184,7 +187,8 @@ describe('StudentsService', () => {
     });
 
     it('sem nome → 400', async () => {
-      const body = await bodyOfRejection(service.criar(sessao(), {}));
+      // Corpo inválido de propósito (dupla barreira D104).
+      const body = await bodyOfRejection(service.criar(sessao(), {} as never));
       expect(body).toEqual({ error: 'Nome do aluno é obrigatório' });
     });
 
@@ -241,16 +245,9 @@ describe('StudentsService', () => {
       expect(email.enviarConviteDeAtleta).not.toHaveBeenCalled();
     });
 
-    /* ── D83 — limite de alunos só pelo caminho Partner/B2B ── */
+    /* ── D83 (legado) + D102 (fatia 29) — limite unificado admin → partner → SaaS → free ── */
 
-    it('D83: sem PartnerAccount → bloqueado (fallback SaaS legado não é portado)', async () => {
-      prisma.partnerAccount.findUnique.mockResolvedValue(null);
-      const body = await bodyOfRejection(service.criar(sessao(), { name: 'Aluno' }));
-      expect(body).toEqual({ error: 'Apenas parceiros podem adicionar alunos.' });
-      expect(prisma.student.create).not.toHaveBeenCalled();
-    });
-
-    it('D83: tier com maxAthletes null → ilimitado, não conta nem bloqueia', async () => {
+    it('D83: tier parceiro com maxAthletes null → ilimitado, não conta nem bloqueia', async () => {
       prisma.partnerAccount.findUnique.mockResolvedValue({ tier: { maxAthletes: null } });
       await service.criar(sessao(), { name: 'Aluno' });
       expect(prisma.student.count).not.toHaveBeenCalled();
@@ -287,6 +284,33 @@ describe('StudentsService', () => {
       prisma.partnerAccount.findUnique.mockResolvedValue(null);
       await service.criar(sessao({ isAdmin: true }), { name: 'Aluno' });
       expect(prisma.student.create).toHaveBeenCalled();
+    });
+
+    /* ── Fatia 29 (D102) — caminho SaaS unificado ── */
+
+    it('D102: SaaS com tier ativo e espaço → cria (não só parceiro)', async () => {
+      prisma.partnerAccount.findUnique.mockResolvedValue(null);
+      prisma.saaSTier.findFirst.mockResolvedValue({ maxAthletes: 3, maxPlansPerMonth: 10 });
+      prisma.student.count.mockResolvedValue(0);
+      await service.criar(sessao(), { name: 'Aluno' });
+      expect(prisma.student.create).toHaveBeenCalled();
+    });
+
+    it('D102: SaaS no limite → 403 com mensagem SaaS', async () => {
+      prisma.partnerAccount.findUnique.mockResolvedValue(null);
+      prisma.saaSTier.findFirst.mockResolvedValue({ maxAthletes: 3, maxPlansPerMonth: 10 });
+      prisma.student.count.mockResolvedValue(3);
+      const body = await bodyOfRejection(service.criar(sessao(), { name: 'Aluno' }));
+      expect(body).toEqual({ error: 'Limite de 3 atletas atingido. Faça upgrade para o plano Premium.' });
+      expect(prisma.student.create).not.toHaveBeenCalled();
+    });
+
+    it('D102: free (sem parceiro, sem plano) → 403 pedindo upgrade', async () => {
+      prisma.partnerAccount.findUnique.mockResolvedValue(null);
+      prisma.saaSTier.findFirst.mockResolvedValue(null);
+      const body = await bodyOfRejection(service.criar(sessao({ subscriptionPlan: null }), { name: 'Aluno' }));
+      expect(body).toEqual({ error: 'Limite de 0 atletas atingido. Faça upgrade para o plano Premium.' });
+      expect(prisma.student.create).not.toHaveBeenCalled();
     });
   });
 

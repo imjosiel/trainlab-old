@@ -1,24 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { ADMIN_SYSTEM_ROLES, PLAN_STATUS, ROLES } from '@/common/constants';
+import { assertValidTransition } from '@/common/plan-state-machine';
 import { SessionPayload } from '@/auth/session-payload';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { NotificationsService } from '@/notifications/notifications.service';
-
-export interface ListPlansQuery {
-  studentId?: string;
-  athleteId?: string;
-  status?: string;
-  q?: string;
-  page?: string;
-}
-
-export interface UpdatePlanBody {
-  status?: string;
-  finalPlan?: string;
-  trainerNotes?: string;
-}
+import { ListPlansQuery, UpdatePlanBody } from './dtos';
 
 const PAGE_SIZE = 50;
 const VALID_STATUSES: string[] = Object.values(PLAN_STATUS);
@@ -171,6 +159,17 @@ export class TrainingPlansService {
 
     if (status) {
       if (!VALID_STATUSES.includes(status)) throw new BadRequestException({ error: 'Status inválido.' });
+      // Fatia 29 (D100) — state-machine central: sem pular etapa (ex.
+      // PENDING→COMPLETED) nem reabrir plano fechado (COMPLETED→PENDING).
+      // Só checa quando há troca de status — edição de finalPlan/notes não é transição.
+      try {
+        assertValidTransition(
+          plan.status as (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS],
+          status as (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS],
+        );
+      } catch (err) {
+        throw new BadRequestException({ error: (err as Error).message });
+      }
       updateData.status = status;
       if (status === PLAN_STATUS.APPROVED) updateData.approvedAt = new Date();
     }

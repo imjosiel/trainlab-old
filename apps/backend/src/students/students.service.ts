@@ -9,24 +9,18 @@ import { PlanStatus } from '.prisma-backend/client';
 
 import { ADMIN_SYSTEM_ROLES, ROLES } from '@/common/constants';
 import { parsePage } from '@/common/pagination';
+import { canAddAthlete } from '@/common/subscription-limits';
 import { SessionPayload } from '@/auth/session-payload';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { CreateStudentBody } from './dtos';
 
 export interface ListStudentsQuery {
   trainerId?: string;
   q?: string;
   search?: string;
   page?: string;
-}
-
-export interface CreateStudentBody {
-  name?: unknown;
-  email?: unknown;
-  sport?: unknown;
-  sportId?: unknown;
-  position?: unknown;
 }
 
 interface SportProfileInput {
@@ -178,7 +172,11 @@ export class StudentsService {
       throw new BadRequestException({ error: 'Nome deve ter entre 1 e 100 caracteres.' });
     }
 
-    await this.verificarLimiteDeAlunos(user.id, isAdmin);
+    // Plano SaaS vem da sessão (o callback jwt do NextAuth preenche
+    // subscriptionPlan a cada 15 min — D4: sem query extra aqui).
+    const userPlan = (user as { subscriptionPlan?: string | null }).subscriptionPlan ?? null;
+
+    await this.verificarLimiteDeAlunos(user.id, isAdmin, userPlan);
 
     let userId: string | null = null;
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
@@ -375,43 +373,20 @@ export class StudentsService {
   }
 
   /**
-   * D83 — só o caminho Partner/B2B. `maxAthletes: null` é ilimitado, e é o
-   * caso comum: o parceiro não paga taxa fixa, a receita vem da comissão
-   * sobre o que ele fatura em cima dos próprios alunos, então limitar
-   * alunos limitaria a própria receita da plataforma.
-   *
-   * Sem `PartnerAccount`: bloqueado. O fallback SaaS/B2C do legado não é
-   * portado aqui — é caminho que a direção B2B-only do produto já não
-   * sustenta (ver spec).
+   * Fatia 29 (D102) — delega para a fonte única `canAddAthlete`: admin →
+   * partner → SaaS → free. O caminho exclusivo Partner/B2B (D83) bloqueava
+   * treinador SaaS com assinatura ativa ("Apenas parceiros") — fail-closed
+   * errado que empurrava para suporte. Mensagem sai do resultado, com o
+   * mesmo texto do legado por caminho.
    */
-  private async verificarLimiteDeAlunos(trainerId: string, isAdmin: boolean): Promise<void> {
-    if (isAdmin) return;
-
-    const partnerAccount = await this.prisma.partnerAccount.findUnique({
-      where: { userId: trainerId },
-      select: { tier: { select: { maxAthletes: true } } },
-    });
-
-    if (!partnerAccount) {
-      throw new ForbiddenException({ error: 'Apenas parceiros podem adicionar alunos.' });
-    }
-
-    let maxAthletes = partnerAccount.tier?.maxAthletes ?? null;
-    if (!partnerAccount.tier) {
-      const starter = await this.prisma.partnerTier.findFirst({
-        where: { slug: 'starter', isActive: true },
-        select: { maxAthletes: true },
-      });
-      maxAthletes = starter?.maxAthletes ?? null;
-    }
-
-    if (maxAthletes === null) return;
-
-    const athleteCount = await this.prisma.student.count({ where: { trainerId } });
-    if (athleteCount >= maxAthletes) {
-      throw new ForbiddenException({
-        error: `Limite de ${maxAthletes} alunos atingido para o seu plano de parceiro.`,
-      });
+  private async verificarLimiteDeAlunos(
+    trainerId: string,
+    isAdmin: boolean,
+    userPlan: string | null = null,
+  ): Promise<void> {
+    const check = await canAddAthlete(this.prisma, trainerId, userPlan, isAdmin);
+    if (!check.allowed) {
+      throw new ForbiddenException({ error: check.message ?? 'Limite de alunos atingido.' });
     }
   }
 

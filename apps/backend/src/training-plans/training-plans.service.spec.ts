@@ -302,6 +302,9 @@ describe('TrainingPlansService', () => {
     });
 
     it('ao entregar, notifica com tipo PLAN_DELIVERED', async () => {
+      // D100: DELIVERED só é alcançável a partir de APPROVED — o plano do
+      // beforeEach (PENDING) não pode pular direto para DELIVERED.
+      prisma.trainingPlan.findUnique.mockResolvedValue(planRow({ status: 'APPROVED' }));
       await service.atualizar('plan-1', sessao(), { status: 'DELIVERED' });
       expect(notifications.criar).toHaveBeenCalledWith(
         expect.objectContaining({ userId: ATHLETE, type: 'PLAN_DELIVERED' }),
@@ -312,6 +315,36 @@ describe('TrainingPlansService', () => {
       await service.atualizar('plan-1', sessao(), { trainerNotes: 'nota interna' });
       expect(notifications.criar).not.toHaveBeenCalled();
       expect(email.enviarPlanoAprovado).not.toHaveBeenCalled();
+    });
+
+    /* ── Fatia 29 (D100) — state-machine ── */
+
+    it('D100: PENDING → COMPLETED direto (pula aprovação) → 400', async () => {
+      prisma.trainingPlan.findUnique.mockResolvedValue(planRow({ status: 'PENDING' }));
+      const body = await bodyOfRejection(service.atualizar('plan-1', sessao(), { status: 'COMPLETED' }));
+      expect(body.error).toMatch(/Transição inválida.*PENDING.*COMPLETED/);
+      expect(prisma.trainingPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('D100: COMPLETED → PENDING (reabre plano fechado) → 400', async () => {
+      prisma.trainingPlan.findUnique.mockResolvedValue(planRow({ status: 'COMPLETED' }));
+      const body = await bodyOfRejection(service.atualizar('plan-1', sessao(), { status: 'PENDING' }));
+      expect(body.error).toMatch(/Transição inválida/);
+      expect(prisma.trainingPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('D100: [controle] REJECTED → PENDING passa (treinador re-gera)', async () => {
+      prisma.trainingPlan.findUnique.mockResolvedValue(planRow({ status: 'REJECTED' }));
+      await service.atualizar('plan-1', sessao(), { status: 'PENDING' });
+      expect(prisma.trainingPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'PENDING' }) }),
+      );
+    });
+
+    it('D100: edição sem status não checa transição', async () => {
+      prisma.trainingPlan.findUnique.mockResolvedValue(planRow({ status: 'COMPLETED' }));
+      await service.atualizar('plan-1', sessao(), { trainerNotes: 'nota' });
+      expect(prisma.trainingPlan.update).toHaveBeenCalled();
     });
   });
 
