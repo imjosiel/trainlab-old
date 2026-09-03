@@ -1,0 +1,427 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+        "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
+        "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+        monospace;
+}
+
+.App {
+    text-align: center;
+}
+
+.App-logo {
+    height: 40vmin;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .App-logo {
+        animation: App-logo-spin infinite 20s linear;
+    }
+}
+
+.App-header {
+    background-color: #0f0f10;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(10px + 2vmin);
+    color: white;
+}
+
+.App-link {
+    color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+
+@layer base {
+  :root {
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+        --primary: 222.2 47.4% 11.2%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 222.2 84% 4.9%;
+        --chart-1: 12 76% 61%;
+        --chart-2: 173 58% 39%;
+        --chart-3: 197 37% 24%;
+        --chart-4: 43 74% 66%;
+        --chart-5: 27 87% 67%;
+        --radius: 0.5rem;
+        --sidebar-background: 0 0% 98%;
+        --sidebar-foreground: 240 5.3% 26.1%;
+        --sidebar-primary: 240 5.9% 10%;
+        --sidebar-primary-foreground: 0 0% 98%;
+        --sidebar-accent: 240 4.8% 95.9%;
+        --sidebar-accent-foreground: 240 5.9% 10%;
+        --sidebar-border: 220 13% 91%;
+        --sidebar-ring: 217.2 91.2% 59.8%;
+    }
+  .dark {
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 210 40% 98%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 212.7 26.8% 83.9%;
+        --chart-1: 220 70% 50%;
+        --chart-2: 160 60% 45%;
+        --chart-3: 30 80% 55%;
+        --chart-4: 280 65% 60%;
+        --chart-5: 340 75% 55%;
+        --sidebar-background: 240 5.9% 10%;
+        --sidebar-foreground: 240 4.8% 95.9%;
+        --sidebar-primary: 224.3 76.3% 48%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 240 3.7% 15.9%;
+        --sidebar-accent-foreground: 240 4.8% 95.9%;
+        --sidebar-border: 240 3.7% 15.9%;
+        --sidebar-ring: 217.2 91.2% 59.8%;
+    }
+
+  /* ── Tema Dark Blue — Player.Action Premium ───────────────────────────── */
+  /* Inspirado nas cores do tour popover: slate profundo + verde como accent */
+  [data-theme="dark-blue"] {
+        --background: 215 28% 9%;        /* #0f1623 — fundo principal */
+        --foreground: 210 40% 94%;       /* #e2e8f4 — texto principal */
+
+        --card: 217 30% 12%;             /* #141d2b — cards */
+        --card-foreground: 210 38% 92%; /* #dde5f2 */
+
+        --popover: 218 32% 10%;          /* #101824 */
+        --popover-foreground: 210 40% 94%;
+
+        --primary: 142 70% 45%;          /* #22c55e — verde Player.Action */
+        --primary-foreground: 217 30% 8%;/* texto escuro no botão verde */
+
+        --secondary: 217 28% 18%;        /* #1e2d42 — botões secundários */
+        --secondary-foreground: 210 38% 85%;
+
+        --muted: 216 26% 16%;            /* #1a2638 */
+        --muted-foreground: 215 20% 58%; /* #7d92ae */
+
+        --accent: 142 60% 30%;           /* verde escuro para hover accent */
+        --accent-foreground: 142 70% 90%;
+
+        --destructive: 0 65% 50%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 217 25% 22%;           /* #243347 */
+        --input: 217 28% 18%;
+        --ring: 142 60% 45%;             /* focus ring verde */
+
+        --chart-1: 142 70% 45%;          /* verde */
+        --chart-2: 199 89% 60%;          /* azul claro */
+        --chart-3: 262 60% 65%;          /* roxo */
+        --chart-4: 39 94% 60%;           /* amarelo */
+        --chart-5: 0 72% 60%;            /* vermelho */
+
+        --radius: 0.625rem;
+
+        /* Sidebar — azul-escuro levemente mais claro que o fundo */
+        --sidebar-background: 216 30% 11%;   /* #111d2c */
+        --sidebar-foreground: 210 35% 85%;
+        --sidebar-primary: 142 70% 45%;       /* verde */
+        --sidebar-primary-foreground: 215 28% 8%;
+        --sidebar-accent: 217 28% 16%;
+        --sidebar-accent-foreground: 142 60% 75%;
+        --sidebar-border: 217 22% 20%;
+        --sidebar-ring: 142 60% 45%;
+    }
+
+  /* Overrides específicos px tema dark-blue — classes Tailwind que
+     usam cores hardcoded e não pegam via CSS variables */
+  [data-theme="dark-blue"] body {
+        background-color: hsl(215, 28%, 9%);
+        color: hsl(210, 40%, 94%);
+    }
+
+  /* Cards e superfícies */
+  [data-theme="dark-blue"] .bg-white {
+        background-color: hsl(217, 30%, 12%) !important;
+        color: hsl(210, 38%, 92%) !important;
+    }
+  [data-theme="dark-blue"] .bg-gray-50,
+  [data-theme="dark-blue"] .bg-slate-50 {
+        background-color: hsl(216, 26%, 15%) !important;
+    }
+  [data-theme="dark-blue"] .bg-gray-100,
+  [data-theme="dark-blue"] .bg-slate-100 {
+        background-color: hsl(217, 25%, 18%) !important;
+    }
+
+  /* Bordas */
+  [data-theme="dark-blue"] .border-gray-200,
+  [data-theme="dark-blue"] .border-slate-200 {
+        border-color: hsl(217, 25%, 22%) !important;
+    }
+
+  /* Textos */
+  [data-theme="dark-blue"] .text-gray-900,
+  [data-theme="dark-blue"] .text-slate-900 {
+        color: hsl(210, 40%, 94%) !important;
+    }
+  [data-theme="dark-blue"] .text-gray-600,
+  [data-theme="dark-blue"] .text-slate-500,
+  [data-theme="dark-blue"] .text-gray-500 {
+        color: hsl(215, 20%, 60%) !important;
+    }
+  [data-theme="dark-blue"] .text-gray-700,
+  [data-theme="dark-blue"] .text-slate-700 {
+        color: hsl(210, 32%, 80%) !important;
+    }
+
+  /* Sidebar */
+  [data-theme="dark-blue"] nav {
+        background-color: hsl(216, 30%, 11%) !important;
+        border-color: hsl(217, 22%, 20%) !important;
+    }
+  [data-theme="dark-blue"] nav a:hover {
+        background-color: hsl(217, 28%, 16%) !important;
+    }
+  [data-theme="dark-blue"] nav a.active-nav-item,
+  [data-theme="dark-blue"] nav a[aria-current="page"] {
+        background-color: hsla(142, 70%, 45%, 0.15) !important;
+        color: hsl(142, 70%, 60%) !important;
+    }
+
+  /* Input fields */
+  [data-theme="dark-blue"] input,
+  [data-theme="dark-blue"] textarea,
+  [data-theme="dark-blue"] select {
+        background-color: hsl(217, 28%, 16%) !important;
+        border-color: hsl(217, 25%, 22%) !important;
+        color: hsl(210, 38%, 92%) !important;
+    }
+
+  /* Scrollbar */
+  [data-theme="dark-blue"] ::-webkit-scrollbar {
+        width: 6px;
+    }
+  [data-theme="dark-blue"] ::-webkit-scrollbar-track {
+        background: hsl(215, 28%, 9%);
+    }
+  [data-theme="dark-blue"] ::-webkit-scrollbar-thumb {
+        background: hsl(217, 25%, 25%);
+        border-radius: 3px;
+    }
+  [data-theme="dark-blue"] ::-webkit-scrollbar-thumb:hover {
+        background: hsl(142, 50%, 35%);
+    }
+
+  /* ── Refinamentos Dark Blue v2 ────────────────────────────────────────── */
+
+  /* Nav: item ativo usa class bg-green-50 text-green-700 — sobrescreve */
+  [data-theme="dark-blue"] nav a[class*="bg-green-50"] {
+        background-color: hsla(142, 60%, 38%, 0.18) !important;
+        color: hsl(142, 65%, 60%) !important;
+        border-right-color: hsl(142, 65%, 50%) !important;
+    }
+  [data-theme="dark-blue"] nav a[class*="bg-green-50"] svg {
+        color: hsl(142, 65%, 55%) !important;
+    }
+  /* Nav hover (hover:bg-gray-50) */
+  [data-theme="dark-blue"] nav a:hover {
+        background-color: hsl(217, 28%, 16%) !important;
+        color: hsl(210, 38%, 88%) !important;
+    }
+
+  /* Subscription card na sidebar — bg-green-50 / bg-blue-50 */
+  [data-theme="dark-blue"] .bg-blue-50 {
+        background-color: hsla(213, 60%, 22%, 0.30) !important;
+    }
+  [data-theme="dark-blue"] .border-green-200 {
+        border-color: hsl(142, 38%, 26%) !important;
+    }
+  [data-theme="dark-blue"] .border-blue-200 {
+        border-color: hsl(213, 42%, 28%) !important;
+    }
+  [data-theme="dark-blue"] .hover\:bg-green-100:hover {
+        background-color: hsla(142, 55%, 28%, 0.28) !important;
+    }
+  [data-theme="dark-blue"] .hover\:bg-blue-100:hover {
+        background-color: hsla(213, 55%, 25%, 0.28) !important;
+    }
+
+  /* Textos green/blue que usam classes hardcoded */
+  [data-theme="dark-blue"] .text-green-800 { color: hsl(142, 58%, 65%) !important; }
+  [data-theme="dark-blue"] .text-blue-800  { color: hsl(210, 68%, 70%) !important; }
+  [data-theme="dark-blue"] .text-green-600 { color: hsl(142, 58%, 55%) !important; }
+  [data-theme="dark-blue"] .text-blue-600  { color: hsl(210, 68%, 62%) !important; }
+
+  /* Admin — textos slate que ficam com baixo contraste no fundo escuro */
+  [data-theme="dark-blue"] .text-slate-800,
+  [data-theme="dark-blue"] .text-slate-900 { color: hsl(210, 38%, 88%) !important; }
+  [data-theme="dark-blue"] .text-slate-700 { color: hsl(210, 28%, 76%) !important; }
+  [data-theme="dark-blue"] .text-slate-600,
+  [data-theme="dark-blue"] .text-slate-500 { color: hsl(215, 20%, 60%) !important; }
+
+  /* Admin — bordas slate */
+  [data-theme="dark-blue"] .border-slate-200 { border-color: hsl(217, 22%, 22%) !important; }
+  [data-theme="dark-blue"] .border-slate-100 { border-color: hsl(217, 20%, 19%) !important; }
+
+  /* Tab switcher do admin (bg-slate-100 container) */
+  [data-theme="dark-blue"] .bg-slate-100 { background-color: hsl(217, 26%, 16%) !important; }
+
+  /* Admin — caixa amarela (Sistema de Créditos) */
+  [data-theme="dark-blue"] .bg-yellow-50  { background-color: hsla(45, 55%, 18%, 0.32) !important; }
+  [data-theme="dark-blue"] .border-yellow-200 { border-color: hsl(45, 42%, 28%) !important; }
+  [data-theme="dark-blue"] .text-yellow-900 { color: hsl(45, 78%, 68%) !important; }
+  [data-theme="dark-blue"] .text-yellow-700 { color: hsl(45, 68%, 60%) !important; }
+
+  /* Admin — caixa laranja (aviso R2 / Cloudinary) */
+  [data-theme="dark-blue"] .bg-orange-50  { background-color: hsla(25, 55%, 16%, 0.30) !important; }
+  [data-theme="dark-blue"] .border-orange-100,
+  [data-theme="dark-blue"] .border-orange-200 { border-color: hsl(25, 42%, 26%) !important; }
+  [data-theme="dark-blue"] .text-orange-800 { color: hsl(25, 78%, 66%) !important; }
+  [data-theme="dark-blue"] .text-orange-700 { color: hsl(25, 68%, 60%) !important; }
+  [data-theme="dark-blue"] .text-orange-500 { color: hsl(25, 68%, 54%) !important; }
+
+  /* Sidebar footer border-t */
+  [data-theme="dark-blue"] .border-t { border-top-color: hsl(217, 22%, 20%) !important; }
+
+  /* ── Landing Page ─────────────────────────────────────────────────────── */
+
+  /* Fundo global da landing — sobrescreve from-green-50 via-white to-green-50 */
+  [data-theme="dark-blue"] .min-h-screen.bg-gradient-to-b {
+        background: linear-gradient(to bottom,
+            hsl(215, 32%, 10%),
+            hsl(217, 30%, 12%),
+            hsl(215, 32%, 10%)) !important;
+    }
+
+  /* Textos principais gray que ficam invisíveis/apagados */
+  [data-theme="dark-blue"] .text-gray-900 { color: hsl(210, 40%, 90%) !important; }
+  [data-theme="dark-blue"] .text-gray-700 { color: hsl(210, 28%, 74%) !important; }
+  [data-theme="dark-blue"] .text-gray-600 { color: hsl(215, 22%, 62%) !important; }
+  [data-theme="dark-blue"] .text-gray-500 { color: hsl(215, 18%, 55%) !important; }
+  [data-theme="dark-blue"] .text-gray-400 { color: hsl(215, 15%, 50%) !important; }
+
+  /* Badge "Powered by AI" na hero — bg-green-100 */
+  [data-theme="dark-blue"] .bg-green-100 { background-color: hsla(142, 55%, 30%, 0.22) !important; }
+  [data-theme="dark-blue"] .text-green-700 { color: hsl(142, 62%, 58%) !important; }
+
+  /* Tab switcher de pricing — bg-gray-100 ativo */
+  [data-theme="dark-blue"] .bg-gray-100 { background-color: hsl(217, 26%, 15%) !important; }
+  [data-theme="dark-blue"] .bg-gray-100 .bg-white {
+        background-color: hsl(217, 28%, 22%) !important;
+        color: hsl(142, 62%, 55%) !important;
+    }
+  [data-theme="dark-blue"] .hover\:text-gray-900:hover { color: hsl(210, 38%, 88%) !important; }
+
+  /* Cards de features e pricing */
+  [data-theme="dark-blue"] .border-green-100  { border-color: hsl(142, 35%, 22%) !important; }
+  [data-theme="dark-blue"] .hover\:border-green-300:hover { border-color: hsl(142, 45%, 35%) !important; }
+  [data-theme="dark-blue"] .border-gray-200   { border-color: hsl(217, 22%, 22%) !important; }
+
+  /* Ícone verde no card features — bg-green-100 já coberto acima */
+
+  /* Preço do plano "R$ 0.00" usa text-gray-900 — coberto acima */
+
+  /* Botão "Começar Agora" shape não-popular — bg-gray-900 */
+  [data-theme="dark-blue"] .bg-gray-900 { background-color: hsl(217, 30%, 18%) !important; }
+  [data-theme="dark-blue"] .hover\:bg-gray-800:hover { background-color: hsl(217, 28%, 22%) !important; }
+
+  /* CTA Section verde (Pronto para revolucionar) — mantém verde mas mais escuro */
+  [data-theme="dark-blue"] .bg-green-600 {
+        background-color: hsl(142, 55%, 28%) !important;
+    }
+  [data-theme="dark-blue"] .hover\:bg-green-700:hover { background-color: hsl(142, 55%, 24%) !important; }
+
+  /* Footer da landing — bg-gray-900 já coberto, text-gray-400 coberto */
+  [data-theme="dark-blue"] .text-white { color: hsl(210, 38%, 92%) !important; }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+
+  /* Driver.js Custom Theme for Player.Action */
+  .driver-theme-player-action {
+    --driver-popover-bg: hsl(var(--card));
+    --driver-popover-text: hsl(var(--card-foreground));
+    --driver-popover-radius: var(--radius);
+    --driver-border-color: hsl(var(--border));
+    
+    --driver-font-family: inherit;
+    --driver-title-color: hsl(var(--foreground));
+    --driver-title-font-size: 1.125rem;
+    --driver-title-font-weight: 600;
+    
+    --driver-title-margin: 0;
+    
+    --driver-description-color: hsl(var(--muted-foreground));
+    --driver-description-margin: 0.5rem 0 1rem 0;
+    --driver-description-font-size: 0.875rem;
+    
+    --driver-button-bg: hsl(var(--secondary));
+    --driver-button-text: hsl(var(--secondary-foreground));
+    --driver-button-radius: calc(var(--radius) - 2px);
+    
+    --driver-next-button-bg: hsl(var(--primary));
+    --driver-next-button-text: hsl(var(--primary-foreground));
+    
+    --driver-close-color: hsl(var(--muted-foreground));
+  }
+
+  /* Sombra mais premium pro balão do driver */
+  .driver-popover.driver-theme-player-action {
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    border: 1px solid hsl(var(--border));
+  }
+}
