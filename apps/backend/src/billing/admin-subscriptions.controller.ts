@@ -11,7 +11,8 @@ import {
 } from '@nestjs/swagger';
 
 import { AdminOnly } from '@/auth/admin-only.decorator';
-import { GrantOrRevokeBody, AdminSubscriptionsService } from './admin-subscriptions.service';
+import { GrantOrRevokeBody } from './dtos';
+import { AdminSubscriptionsService } from './admin-subscriptions.service';
 
 @ApiTags('billing')
 @ApiBearerAuth()

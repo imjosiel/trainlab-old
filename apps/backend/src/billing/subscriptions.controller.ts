@@ -15,7 +15,8 @@ import { CurrentUser } from '@/auth/current-user.decorator';
 import { Public } from '@/auth/public.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import { ROLES } from '@/common/constants';
-import { CancelBody, CheckoutBody, ReactivateBody, SubscriptionsService } from './subscriptions.service';
+import { CancelBody, CheckoutBody, ReactivateBody } from './dtos';
+import { SubscriptionsService } from './subscriptions.service';
 
 /** O que o aluno vê e faz com as próprias assinaturas B2B. */
 @ApiTags('billing')

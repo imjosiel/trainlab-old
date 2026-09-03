@@ -13,7 +13,8 @@ import {
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { Public } from '@/auth/public.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import { CreateOfferBody, OffersService, UpdateOfferBody } from './offers.service';
+import { CreateOfferBody, UpdateOfferBody } from './dtos';
+import { OffersService } from './offers.service';
 
 /** Página de venda — sem sessão, é o link que o aluno recebe. */
 @ApiTags('billing')
