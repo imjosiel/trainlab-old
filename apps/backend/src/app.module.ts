@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { ErrorContractFilter } from '@/common/error-contract.filter';
+import { TrainLabThrottlerGuard } from '@/common/trainlab-throttler.guard';
 
 import { MeController } from '@/auth/me.controller';
 import { NextAuthJwtGuard } from '@/auth/next-auth-jwt.guard';
@@ -41,6 +43,14 @@ import { UsersModule } from '@/users/users.module';
     // NEXTAUTH_SECRET e nega toda requisição pelo ramo fail-closed. Popula
     // process.env, que é de onde o guard lê.
     ConfigModule.forRoot({ isGlobal: true }),
+    // Fatia 27 (SDD: DoS) — rate-limit in-memory. Um único throttler `default`
+    // (100 req/min) como rede de segurança global; rotas caras apertam via
+    // `@Throttle({ default: { limit, ttl } })`. Webhooks Stripe usam
+    // `@SkipThrottle()` (reenvio em rajada é desenho da Stripe, não abuso).
+    // Sem Redis nesta fatia — mesma decisão do `lib/rate-limit.ts` do legado.
+    ThrottlerModule.forRoot({
+      throttlers: [{ limit: 100, ttl: 60_000 }],
+    }),
     PrismaModule,
     RealtimeModule,
     SportsModule,
@@ -77,6 +87,9 @@ import { UsersModule } from '@/users/users.module';
     // sessão responderia 403 em vez de 401.
     { provide: APP_GUARD, useClass: NextAuthJwtGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Fatia 27 — throttle DEPOIS de saber quem é (tracker = user.id), ANTES
+    // do handler. Dono do 429; o corpo sai pelo ErrorContractFilter.
+    { provide: APP_GUARD, useClass: TrainLabThrottlerGuard },
     // Mesmo espírito do guard global: o contrato `{ error }` deixa de depender
     // de cada lugar que lança se lembrar dele, e passa a valer para todo erro —
     // inclusive os que nascem fora do nosso código, como o 404 do router.

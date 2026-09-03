@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
@@ -40,6 +41,15 @@ async function bootstrap(): Promise<void> {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
     credentials: true,
   });
+
+  // Fatia 27 (SDD: Tampering) — validação global. `whitelist: true` descarta
+  // campo desconhecido sem quebrar PATCH parcial (D30); `transform: true`
+  // tipa o corpo no DTO antes da regra. `forbidNonWhitelisted: false` de
+  // propósito: o legado ignora campo extra em silêncio, e 400 em campo extra
+  // quebraria clientes que mandam campos a mais.
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }),
+  );
 
   const config = new DocumentBuilder()
     .setTitle('TrainLab API')
