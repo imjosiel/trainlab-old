@@ -4,15 +4,9 @@ import { ApiBadRequestResponse, ApiBearerAuth, ApiForbiddenResponse, ApiOperatio
 import { AdminOnly } from '@/auth/admin-only.decorator';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
-import { AdminCreditsService, CreatePackageBody, UpdatePackageBody } from './admin-credits.service';
+import { AdminCreditsService } from './admin-credits.service';
 import { CreditsService } from './credits.service';
-
-interface GrantBody {
-  userId?: string;
-  amount?: number;
-  description?: string;
-  bucket?: string;
-}
+import { CreatePackageBody, GrantBody, UpdatePackageBody } from './dtos';
 
 const MAX_GRANT = 100_000;
 const BUCKETS_VALIDOS = ['plan', 'purchased'];

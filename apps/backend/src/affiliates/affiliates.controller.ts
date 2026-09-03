@@ -5,9 +5,8 @@ import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import {
   AffiliatesService,
-  CriarSessaoDeOnboardingBody,
-  ListarGanhosQuery,
 } from './affiliates.service';
+import { CriarSessaoDeOnboardingBody, ListarGanhosQuery } from './dtos';
 
 @ApiTags('affiliates')
 @ApiBearerAuth()

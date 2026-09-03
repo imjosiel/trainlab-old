@@ -4,10 +4,9 @@ import { ApiBearerAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import {
-  CandidatarBody,
-  CriarSessaoDeOnboardingBody,
   PartnerConnectService,
 } from './partner-connect.service';
+import { CandidatarBody, CriarSessaoDeOnboardingBody } from './dtos';
 
 @ApiTags('partner-connect')
 @ApiBearerAuth()

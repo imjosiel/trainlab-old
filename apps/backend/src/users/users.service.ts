@@ -34,15 +34,11 @@ function safeDecode(value: string): string {
  * Isso é o que impede `systemRoles: ['ADMIN']` no corpo de virar escalada de
  * privilégio. Já estava certo no legado; o que faltava era alguém provando por
  * teste, porque é uma garantia que um refactor apaga sem perceber. Ver D31/D32.
+ *
+ * Fatia 36: o tipo agora é o DTO `UpdateOwnProfileBody` (forma validada no
+ * pipe); a allowlist por nome continua aqui, intocada.
  */
-interface UpdateProfileBody {
-  username?: unknown;
-  bio?: unknown;
-  isPublic?: unknown;
-  name?: unknown;
-  role?: unknown;
-  phone?: unknown;
-}
+import { UpdateOwnProfileBody as UpdateProfileBody } from './dtos';
 
 @Injectable()
 export class UsersService {

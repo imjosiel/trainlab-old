@@ -57,7 +57,8 @@ describe('AdminCreditsService', () => {
     const VALIDO = { name: 'Pacote Básico', credits: 100, price: 19.9 };
 
     it('sem nome → 400', async () => {
-      const body = await bodyOfRejection(service.criarPacote({ ...VALIDO, name: undefined }));
+      // Corpo inválido de propósito (dupla barreira D104).
+      const body = await bodyOfRejection(service.criarPacote({ ...VALIDO, name: undefined } as never));
       expect(body).toEqual({ error: 'name é obrigatório (máx. 100 chars).' });
     });
 

@@ -1,21 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '@/prisma/prisma.service';
-
-export interface CreatePackageBody {
-  name?: unknown;
-  credits?: unknown;
-  price?: unknown;
-  stripePriceId?: unknown;
-}
-
-export interface UpdatePackageBody {
-  name?: unknown;
-  credits?: unknown;
-  price?: unknown;
-  stripePriceId?: unknown;
-  isActive?: unknown;
-}
+import { CreatePackageBody, UpdatePackageBody } from './dtos';
 
 function validarCredits(value: unknown): number {
   const parsed = parseInt(String(value), 10);

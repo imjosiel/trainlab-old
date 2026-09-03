@@ -13,6 +13,7 @@ import {
 import { AdminOnly } from '@/auth/admin-only.decorator';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
+import { DecidirTierRequestBody, ForcarTierBody } from './dtos';
 import { TierRequestsService } from './tier-requests.service';
 
 @ApiTags('partner-tiers')
@@ -51,7 +52,7 @@ export class TierRequestsController {
   decidir(
     @Param('id') id: string,
     @CurrentUser() admin: SessionPayload,
-    @Body() body: { action?: unknown; note?: unknown },
+    @Body() body: DecidirTierRequestBody,
   ) {
     return this.pedidos.decidir(id, admin, body);
   }
@@ -77,7 +78,7 @@ export class AdminPartnerTierController {
   forcar(
     @Param('id') id: string,
     @CurrentUser() admin: SessionPayload,
-    @Body() body: { toTierId?: unknown; reason?: unknown },
+    @Body() body: ForcarTierBody,
   ) {
     return this.pedidos.forcarTier(id, admin, body);
   }
