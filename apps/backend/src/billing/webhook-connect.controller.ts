@@ -1,5 +1,6 @@
 import { Controller, Headers, Post, RawBodyRequest, Req } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 
 import { Public } from '@/auth/public.decorator';
@@ -19,6 +20,7 @@ export class WebhookConnectController {
   constructor(private readonly webhook: WebhookConnectService) {}
 
   @Public()
+  @SkipThrottle()
   @Post()
   processar(@Req() req: RawBodyRequest<Request>, @Headers('stripe-signature') assinatura?: string) {
     const corpo = req.rawBody?.toString('utf8') ?? '';
