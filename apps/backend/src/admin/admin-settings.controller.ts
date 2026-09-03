@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '@/auth/admin-only.decorator';
+import { AdminSettingsBody } from '@/common/dtos';
 import { AdminSettingsService } from './admin-settings.service';
 @ApiTags('admin-settings')
 @ApiBearerAuth()
@@ -11,5 +12,5 @@ export class AdminSettingsController {
   listar() { return this.service.get(); }
   @Put()
   @AdminOnly()
-  atualizar(@Body() body: any) { return this.service.update(body); }
+  atualizar(@Body() body: AdminSettingsBody) { return this.service.update(body); }
 }

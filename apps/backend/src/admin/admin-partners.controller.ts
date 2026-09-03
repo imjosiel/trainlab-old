@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '@/auth/admin-only.decorator';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
+import { AdminPartnerActionBody } from '@/common/dtos-admin';
 import { AdminPartnersService } from './admin-partners.service';
 import { AdminPartnersActionsService } from './admin-partners-actions.service';
 
@@ -18,7 +19,7 @@ export class AdminPartnersController {
   }
   @Patch(':id')
   @AdminOnly()
-  atualizar(@Param('id') id: string, @CurrentUser() user: SessionPayload, @Body() body: any) {
+  atualizar(@Param('id') id: string, @CurrentUser() user: SessionPayload, @Body() body: AdminPartnerActionBody) {
     return this.actions.atualizar(id, user.id, body);
   }
 }

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, Patch, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { VideoProcessorBody } from '@/common/dtos-admin';
 import { AdminVideoProcessorService } from './admin-video-processor.service';
 @ApiTags('admin-video-processor')
 @Controller('admin/video-processor')
@@ -16,7 +17,7 @@ export class AdminVideoProcessorController {
     return this.service.listar();
   }
   @Patch()
-  async atualizar(@Body() body: any) {
+  async atualizar(@Body() body: VideoProcessorBody) {
     return this.service.atualizar(body);
   }
 }

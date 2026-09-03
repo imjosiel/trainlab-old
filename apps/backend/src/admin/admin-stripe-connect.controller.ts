@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '@/auth/admin-only.decorator';
+import { StripeConnectRemoveBody } from '@/common/dtos-admin';
 import { AdminStripeConnectService } from './admin-stripe-connect.service';
 @ApiTags('admin-stripe-connect')
 @ApiBearerAuth()
@@ -12,5 +13,5 @@ export class AdminStripeConnectController {
   listar() { return this.service.listar(); }
   @Delete()
   @AdminOnly()
-  remover(@Body() body: any) { return this.service.remover(body.accountId); }
+  remover(@Body() body: StripeConnectRemoveBody) { return this.service.remover(body.accountId); }
 }

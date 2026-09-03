@@ -2,6 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SessionPayload } from '@/auth/session-payload';
+import { PusherAuthBody } from '@/common/dtos-admin';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RealtimeService } from './realtime.service';
 @ApiTags('pusher')
@@ -10,7 +11,7 @@ import { RealtimeService } from './realtime.service';
 export class PusherAuthController {
   constructor(private readonly prisma: PrismaService, private readonly realtime: RealtimeService) {}
   @Post('auth')
-  async auth(@CurrentUser() user: SessionPayload, @Body() body: any) {
+  async auth(@CurrentUser() user: SessionPayload, @Body() body: PusherAuthBody) {
     const socket_id = body.socket_id ?? body.socketId;
     const channel = body.channel_name ?? body.channel;
     if (!socket_id || !channel) return { error: 'Missing params' };

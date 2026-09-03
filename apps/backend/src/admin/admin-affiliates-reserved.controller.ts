@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '@/auth/admin-only.decorator';
+import { AffiliatesReservedBody } from '@/common/dtos-admin';
 import { AdminAffiliatesReservedService } from './admin-affiliates-reserved.service';
 @ApiTags('admin-affiliates-reserved')
 @ApiBearerAuth()
@@ -12,5 +13,5 @@ export class AdminAffiliatesReservedController {
   listar() { return this.service.listar(); }
   @Post()
   @AdminOnly()
-  resolver(@Body() body: any) { return this.service.resolver(body); }
+  resolver(@Body() body: AffiliatesReservedBody) { return this.service.resolver(body); }
 }
