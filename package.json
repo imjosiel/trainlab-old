@@ -5,12 +5,15 @@
   "workspaces": [
     "apps/backend",
     "apps/web",
+    "apps/frontend",
     "packages/*"
   ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=@trainlab/backend",
     "predev:web": "npm run build:packages",
     "dev:web": "npm --prefix apps/web run dev",
+    "predev:frontend": "npm run build:packages",
+    "dev:frontend": "npm --prefix apps/frontend run dev",
     "build:packages": "npm run build --workspace=@trainlab/papeis",
     "prebuild:backend": "npm run build:packages",
     "build:backend": "npm run build --workspace=@trainlab/backend",
