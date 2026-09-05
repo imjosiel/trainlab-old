@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, ArrowLeft, Video, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
+import { JitsiEmbed } from '@/components/video/jitsi-embed'
 
 /**
  * Chamada Online (fatia 37, frontend).
@@ -23,8 +24,6 @@ export default function VideoCallPage() {
     const router = useRouter()
     const { data: session, status } = useSession()
     const id = params.id
-    const containerRef = useRef(null)
-    const apiRef = useRef(null)
 
     const [sala, setSala] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -48,36 +47,6 @@ export default function VideoCallPage() {
 
     const dominioSala = sala ? extrairDominio(sala.joinUrl) : ''
     const ehJitsiPublico = sala?.provider === 'jitsi' && dominioSala === 'meet.jit.si'
-
-    useEffect(() => {
-        if (!sala || sala.provider !== 'jitsi' || ehJitsiPublico) return
-        const montar = () => {
-            if (!containerRef.current || !window.JitsiMeetExternalAPI) return
-            apiRef.current?.dispose?.()
-            apiRef.current = new window.JitsiMeetExternalAPI(extrairDominio(sala.joinUrl), {
-                roomName: sala.roomName,
-                parentNode: containerRef.current,
-                width: '100%',
-                height: 640,
-                // Fatia 38: JWT do Jitsi self-host (moderador garantido).
-                // Ausente no meet.jit.si e sem segredo — o embed próprio usa.
-                ...(sala.token ? { jwt: sala.token } : {}),
-                userInfo: {
-                    displayName: session?.user?.name ?? 'Participante',
-                    email: session?.user?.email ?? undefined,
-                },
-                configOverwrite: { prejoinPageEnabled: true },
-            })
-        }
-        if (window.JitsiMeetExternalAPI) { montar(); return }
-        const script = document.createElement('script')
-        script.src = `https://${extrairDominio(sala.joinUrl)}/external_api.js`
-        script.async = true
-        script.onload = montar
-        script.onerror = () => toast.error('Falha ao carregar o Jitsi')
-        document.head.appendChild(script)
-        return () => { apiRef.current?.dispose?.(); apiRef.current = null }
-    }, [sala, session, ehJitsiPublico])
 
     if (loading || status === 'loading') {
         return (
@@ -143,7 +112,14 @@ export default function VideoCallPage() {
                     </CardContent>
                 </Card>
             ) : sala.provider === 'jitsi' ? (
-                <div ref={containerRef} className="w-full rounded-xl overflow-hidden border bg-black min-h-[640px]" />
+                <JitsiEmbed
+                    domain={dominioSala}
+                    roomName={sala.roomName}
+                    jwt={sala.token}
+                    displayName={session?.user?.name ?? 'Participante'}
+                    email={session?.user?.email}
+                    onError={() => toast.error('Falha ao carregar o Jitsi')}
+                />
             ) : (
                 <div className="rounded-xl overflow-hidden border bg-black">
                     <iframe
