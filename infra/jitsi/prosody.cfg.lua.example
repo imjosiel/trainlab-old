@@ -1,0 +1,16 @@
+-- Prosody — secure domain (fatia 38, referência)
+-- Montar em ./prosody/config/prosody.cfg.lua no host do Jitsi.
+-- Ajustar domínio, app_id e app_secret (iguais ao JITSI_APP_ID / JITSI_JWT_SECRET do backend).
+
+plugin_paths = { "/usr/share/jitsi-meet/prosody-plugins/" }
+asap_accepted_issuers = { "trainlab" }
+asap_accepted_audiences = { "trainlab" }
+
+VirtualHost "meet.exemplo.com"
+    authentication = "token"
+    app_id = "trainlab"                -- igual ao JITSI_APP_ID do backend
+    app_secret = "TROCAR_POR_SEGREDO"  -- igual ao JITSI_JWT_SECRET do backend
+    allow_empty_token = false
+
+Component "conference.meet.exemplo.com" "muc"
+    modules_enabled = { "token_verification" }
