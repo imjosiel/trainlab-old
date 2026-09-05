@@ -224,7 +224,7 @@ function AppointmentDetailModal({ apt, open, onClose, onEdit, onDelete, onStatus
                             {apt.videoJoinUrl && (
                                 <div className="flex items-center gap-2.5">
                                     <Video className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                    <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline">
+                                    <a href={`/dashboard/appointments/${apt.id}/video`} className="text-blue-700 font-medium hover:underline">
                                         Entrar na Chamada Online
                                     </a>
                                 </div>
@@ -456,7 +456,7 @@ function AppointmentBlock({ apt, workStartHour, onEdit, onDelete, onStatusChange
                         {apt.videoJoinUrl && (
                             <div className="flex items-center gap-1.5">
                                 <Video className="w-3 h-3 text-blue-600 flex-shrink-0" />
-                                <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline truncate">
+                                <a href={`/dashboard/appointments/${apt.id}/video`} className="text-blue-700 font-medium hover:underline truncate">
                                     Entrar na Chamada Online
                                 </a>
                             </div>
@@ -1313,7 +1313,7 @@ function StudentView({ appointments, loading, onRefresh }) {
                         {apt.videoJoinUrl && (
                             <div className="flex items-center gap-2">
                                 <Video className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline truncate">
+                                <a href={`/dashboard/appointments/${apt.id}/video`} className="text-blue-700 font-medium hover:underline truncate">
                                     Entrar na Chamada Online
                                 </a>
                             </div>
