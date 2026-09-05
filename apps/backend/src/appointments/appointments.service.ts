@@ -525,11 +525,66 @@ export class AppointmentsService {
     if (!atual.videoJoinUrl || !atual.videoRoomName || !atual.videoProvider) {
       throw new NotFoundException({ error: 'Sala de vídeo não gerada para este agendamento' });
     }
-    return {
+    const base: SalaVideo = {
       provider: atual.videoProvider as SalaVideo['provider'],
       roomName: atual.videoRoomName,
       joinUrl: atual.videoJoinUrl,
     };
+    // Fatia 38 — token Jitsi self-host: só domínio próprio + segredo.
+    // `meet.jit.si` nunca recebe token (embed demo não usa). Sem segredo,
+    // responde sem token e sem erro (fail-open seguro).
+    const token = await this.tokenJitsiParaLeitura(atual, user);
+    return token ? { ...base, token } : base;
+  }
+
+  /**
+   * Minta o JWT do Jitsi para esta leitura, ou `null` quando não aplicável.
+   *
+   * O `moderator` é decidido AQUI (tem o agendamento): dono ou admin.
+   * Nunca vem do corpo da requisição.
+   */
+  private async tokenJitsiParaLeitura(
+    atual: {
+      id: string;
+      trainerId: string;
+      videoProvider?: string | null;
+      videoRoomName?: string | null;
+      videoJoinUrl?: string | null;
+      scheduledAt?: Date | string;
+      durationMinutes?: number | null;
+    },
+    user: SessionPayload,
+  ): Promise<string | null> {
+    if (atual.videoProvider !== 'jitsi') return null;
+    if (!atual.videoJoinUrl || !atual.videoRoomName) return null;
+    let dominio: string;
+    try {
+      dominio = new URL(atual.videoJoinUrl).host;
+    } catch {
+      return null;
+    }
+    if (dominio === 'meet.jit.si') return null;
+    if (!process.env.JITSI_JWT_SECRET) return null;
+    if (!this.video) return null;
+    const fim = new Date(atual.scheduledAt ?? Date.now()).getTime();
+    const validadeSegundos = Number.isNaN(fim)
+      ? 3600
+      : Math.max(60, Math.floor(fim / 1000) + (atual.durationMinutes ?? 60) * 60 + 30 * 60 - Math.floor(Date.now() / 1000));
+    try {
+      return await this.video.mintJitsiToken({
+        roomName: atual.videoRoomName,
+        userId: user.id,
+        displayName: user.name ?? 'Participante',
+        email: user.email ?? null,
+        moderator: user.isAdmin || atual.trainerId === user.id,
+        expiraEmSegundos: validadeSegundos,
+      });
+    } catch (erro) {
+      this.logger.warn(
+        `Token Jitsi não gerado para ${atual.id}: ${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+      return null;
+    }
   }
 
   private exigirParticipante(

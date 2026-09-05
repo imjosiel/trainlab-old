@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
 
 export type ProvedorVideo = 'daily' | 'jitsi';
 export type PedidoVideo = ProvedorVideo | 'auto';
@@ -13,7 +13,22 @@ export interface SalaVideo {
   provider: ProvedorVideo;
   roomName: string;
   joinUrl: string;
+  /** JWT do Jitsi self-host (fatia 38) — presente só com segredo + domínio próprio. */
+  token?: string;
 }
+
+export interface DadosTokenJitsi {
+  roomName: string;
+  userId: string;
+  displayName: string;
+  email?: string | null;
+  moderator: boolean;
+  /** Segundos de validade pedidos; respeita o teto de 12h. */
+  expiraEmSegundos?: number;
+}
+
+/** Teto de validade do token Jitsi: 12h (evita token eterno em dado esquisito). */
+const TETO_TOKEN_SEGUNDOS = 12 * 3600;
 
 /**
  * Porta de vídeo 1:1 (fatia 37) — espelha o `CalendarService` (D66/D62).
@@ -77,6 +92,44 @@ export class VideoService {
     return bruto.replace(/^https?:\/\//, '').replace(/\/+$/, '') || 'meet.jit.si';
   }
 
+  /**
+   * Minta JWT HS256 para o Jitsi self-host (fatia 38 — secure domain).
+   *
+   * Formato oficial do plugin Prosody (`lib-jitsi-meet/doc/tokens.md`):
+   * `{ aud, iss, sub, room, exp, context: { user: { id, name, email, moderator } } }`.
+   * Sem `jsonwebtoken`: HMAC via `crypto` nativo + base64url manual — payload
+   * pequeno, zero deps novas. Lança sem segredo ou com `roomName` vazio
+   * (nunca curinga `*`); quem engole é o chamador (padrão Meet/vídeo).
+   */
+  async mintJitsiToken(dados: DadosTokenJitsi): Promise<string> {
+    const segredo = process.env.JITSI_JWT_SECRET;
+    if (!segredo) throw new Error('JITSI_JWT_SECRET não configurado.');
+    const room = typeof dados.roomName === 'string' ? dados.roomName.trim() : '';
+    if (!room || room === '*') throw new Error('roomName inválido para token Jitsi.');
+    const appId = process.env.JITSI_APP_ID ?? 'trainlab';
+    const agora = Math.floor(Date.now() / 1000);
+    const pedido = Number.isFinite(dados.expiraEmSegundos) ? (dados.expiraEmSegundos as number) : 3600;
+    const validade = Math.max(60, Math.min(pedido, TETO_TOKEN_SEGUNDOS));
+    const header = base64url({ alg: 'HS256', typ: 'JWT' });
+    const payload = base64url({
+      aud: appId,
+      iss: appId,
+      sub: this.dominioJitsi(),
+      room,
+      exp: agora + Math.floor(validade),
+      context: {
+        user: {
+          id: dados.userId,
+          name: dados.displayName,
+          ...(dados.email ? { email: dados.email } : {}),
+          moderator: dados.moderator,
+        },
+      },
+    });
+    const assinatura = createHmac('sha256', segredo).update(`${header}.${payload}`).digest('base64url');
+    return `${header}.${payload}.${assinatura}`;
+  }
+
   private async criarSalaDaily(roomName: string, dados: DadosSalaVideo): Promise<SalaVideo> {
     // exp = início + duração + 30min de margem, em segundos (a sala morre sozinha).
     const exp =
@@ -111,4 +164,9 @@ export class VideoService {
     if (!corpo.url) throw new Error('Daily respondeu sem URL da sala.');
     return { provider: 'daily', roomName: corpo.name ?? roomName, joinUrl: corpo.url };
   }
+}
+
+/** base64url sem padding, para JWT manual sem dependência nova. */
+function base64url(valor: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(valor), 'utf8').toString('base64url');
 }
