@@ -221,6 +221,14 @@ function AppointmentDetailModal({ apt, open, onClose, onEdit, onDelete, onStatus
                                     </a>
                                 </div>
                             )}
+                            {apt.videoJoinUrl && (
+                                <div className="flex items-center gap-2.5">
+                                    <Video className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                    <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline">
+                                        Entrar na Chamada Online
+                                    </a>
+                                </div>
+                            )}
                             {apt.description && (
                                 <div className="flex items-start gap-2.5">
                                     <AlertCircle className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
@@ -442,6 +450,14 @@ function AppointmentBlock({ apt, workStartHour, onEdit, onDelete, onStatusChange
                                 <Video className="w-3 h-3 text-green-600 flex-shrink-0" />
                                 <a href={apt.googleMeetLink} target="_blank" rel="noopener noreferrer" className="text-green-700 font-medium hover:underline truncate">
                                     Entrar no Google Meet
+                                </a>
+                            </div>
+                        )}
+                        {apt.videoJoinUrl && (
+                            <div className="flex items-center gap-1.5">
+                                <Video className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                                <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline truncate">
+                                    Entrar na Chamada Online
                                 </a>
                             </div>
                         )}
@@ -751,6 +767,7 @@ function ScheduleSettingsSheet({ config, blockedSlots, onSaved }) {
 function AppointmentModal({ open, onClose, editTarget, students, prefill, onSaved }) {
     const [form, setForm] = useState({ title: '', scheduledAt: '', durationMinutes: 60, location: '', description: '', studentId: '', trainerNotes: '' })
     const [createMeet, setCreateMeet] = useState(false)
+    const [createVideo, setCreateVideo] = useState(false)
     const [submitting, setSubmitting] = useState(false)
 
     useEffect(() => {
@@ -790,6 +807,25 @@ function AppointmentModal({ open, onClose, editTarget, students, prefill, onSave
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
+            let videoJoinUrl = json.appointment?.videoJoinUrl ?? null
+            let videoNotAvailable = false
+            if (!editTarget && createVideo && json.appointment?.id) {
+                try {
+                    const videoRes = await fetch(`/api/backend/appointments/${json.appointment.id}/video`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({}),
+                    })
+                    const videoJson = await videoRes.json()
+                    if (videoRes.ok && videoJson.video?.joinUrl) {
+                        videoJoinUrl = videoJson.video.joinUrl
+                    } else if (videoJson.videoNotAvailable) {
+                        videoNotAvailable = true
+                    } else if (!videoRes.ok) {
+                        throw new Error(videoJson.error || 'Falha ao gerar chamada online')
+                    }
+                } catch (e) { videoNotAvailable = true }
+            }
             if (createMeet && json.meetNotAvailable) {
                 toast.success('Agendamento criado!')
                 toast.warning('Link do Google Meet não gerado — faça logout e login novamente com o Google para ativar a integração.')
@@ -797,6 +833,13 @@ function AppointmentModal({ open, onClose, editTarget, students, prefill, onSave
                 toast.success('Agendamento criado com link do Google Meet!')
             } else {
                 toast.success(editTarget ? 'Agendamento atualizado!' : 'Agendamento criado!')
+            }
+            if (!editTarget && createVideo) {
+                if (videoNotAvailable) {
+                    toast.warning('Chamada Online indisponível no momento — tente gerar depois pelo detalhe.')
+                } else if (videoJoinUrl) {
+                    toast.success('Chamada Online gerada! Link disponível no detalhe.')
+                }
             }
             onClose()
             onSaved()
@@ -847,13 +890,24 @@ function AppointmentModal({ open, onClose, editTarget, students, prefill, onSave
                         <label className="text-sm font-medium">Descrição</label>
                         <Textarea placeholder="Detalhes do agendamento..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
                     </div>
-                    {!editTarget && (
+                    {/* Google Meet desativado (fatia 37): sem scope calendar.events o link nunca gera.
+                        Para reativar, descomente o bloco abaixo e o scope no lib/auth.ts. */}
+                    {/* {!editTarget && (
                         <div className="flex items-center justify-between rounded-lg border p-3 bg-gray-50">
                             <div>
                                 <p className="text-sm font-medium">Google Meet</p>
                                 <p className="text-xs text-gray-500">Gerar link de videoconferência automaticamente</p>
                             </div>
                             <Switch checked={createMeet} onCheckedChange={setCreateMeet} />
+                        </div>
+                    )} */}
+                    {!editTarget && (
+                        <div className="flex items-center justify-between rounded-lg border p-3 bg-gray-50">
+                            <div>
+                                <p className="text-sm font-medium">Chamada Online</p>
+                                <p className="text-xs text-gray-500">Gerar sala de vídeo 1:1 automaticamente</p>
+                            </div>
+                            <Switch checked={createVideo} onCheckedChange={setCreateVideo} />
                         </div>
                     )}
                 </div>
@@ -1253,6 +1307,14 @@ function StudentView({ appointments, loading, onRefresh }) {
                                 <Video className="w-4 h-4 text-green-600 flex-shrink-0" />
                                 <a href={apt.googleMeetLink} target="_blank" rel="noopener noreferrer" className="text-green-700 font-medium hover:underline truncate">
                                     Entrar no Google Meet
+                                </a>
+                            </div>
+                        )}
+                        {apt.videoJoinUrl && (
+                            <div className="flex items-center gap-2">
+                                <Video className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                <a href={apt.videoJoinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-medium hover:underline truncate">
+                                    Entrar na Chamada Online
                                 </a>
                             </div>
                         )}

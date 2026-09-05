@@ -91,7 +91,11 @@ export const authOptions: AuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope:       'openid email profile https://www.googleapis.com/auth/calendar.events',
+          // Meet/Calendar desativado (fatia 37): sem o scope calendar.events
+          // o Google não exige verificação de app. Para reativar o Meet,
+          // descomente a linha do scope completo abaixo.
+          scope:       'openid email profile',
+          // scope:       'openid email profile https://www.googleapis.com/auth/calendar.events',
           access_type: 'offline',
           prompt:      'consent',
         },
