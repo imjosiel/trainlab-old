@@ -804,9 +804,34 @@ function AppointmentModal({ open, onClose, editTarget, students, prefill, onSave
     const [createMeet, setCreateMeet] = useState(false)
     const [createVideo, setCreateVideo] = useState(false)
     const [submitting, setSubmitting] = useState(false)
+    const [generatingEditVideo, setGeneratingEditVideo] = useState(false)
+    const [editVideoUrl, setEditVideoUrl] = useState(editTarget?.videoJoinUrl ?? null)
+
+    const handleGenerateEditVideo = async () => {
+        if (!editTarget?.id) return
+        setGeneratingEditVideo(true)
+        try {
+            const res = await fetch(`/api/backend/appointments/${editTarget.id}/video`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            if (data.videoNotAvailable || !data.video?.joinUrl) {
+                toast.warning('Chamada Online indisponível no momento — tente de novo.')
+                return
+            }
+            setEditVideoUrl(data.video.joinUrl)
+            toast.success('Chamada Online gerada!')
+            onSaved()
+        } catch (e) { toast.error(e.message) }
+        finally { setGeneratingEditVideo(false) }
+    }
 
     useEffect(() => {
         if (editTarget) {
+            setEditVideoUrl(editTarget.videoJoinUrl ?? null)
             setForm({
                 title: editTarget.title,
                 scheduledAt: new Date(editTarget.scheduledAt).toISOString().slice(0, 16),
@@ -943,6 +968,24 @@ function AppointmentModal({ open, onClose, editTarget, students, prefill, onSave
                                 <p className="text-xs text-gray-500">Gerar sala de vídeo 1:1 automaticamente</p>
                             </div>
                             <Switch checked={createVideo} onCheckedChange={setCreateVideo} />
+                        </div>
+                    )}
+                    {editTarget && (
+                        <div className="flex items-center justify-between rounded-lg border p-3 bg-gray-50">
+                            <div>
+                                <p className="text-sm font-medium">Chamada Online</p>
+                                <p className="text-xs text-gray-500">Sala de vídeo 1:1 deste agendamento</p>
+                            </div>
+                            {(editVideoUrl ?? editTarget.videoJoinUrl) ? (
+                                <a href={`/dashboard/appointments/${editTarget.id}/video`} className="text-sm text-blue-700 font-medium hover:underline">
+                                    Entrar
+                                </a>
+                            ) : (
+                                <Button size="sm" variant="outline" onClick={handleGenerateEditVideo} disabled={generatingEditVideo}>
+                                    {generatingEditVideo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                    Gerar chamada
+                                </Button>
+                            )}
                         </div>
                     )}
                 </div>
