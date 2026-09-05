@@ -59,6 +59,9 @@ export default function VideoCallPage() {
                 parentNode: containerRef.current,
                 width: '100%',
                 height: 640,
+                // Fatia 38: JWT do Jitsi self-host (moderador garantido).
+                // Ausente no meet.jit.si e sem segredo — o embed próprio usa.
+                ...(sala.token ? { jwt: sala.token } : {}),
                 userInfo: {
                     displayName: session?.user?.name ?? 'Participante',
                     email: session?.user?.email ?? undefined,
