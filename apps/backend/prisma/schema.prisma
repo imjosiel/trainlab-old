@@ -1,9 +1,8 @@
-// ATENCAO: copia do schema de apps/web/prisma/schema.prisma.
-// A fonte da verdade e la, e o historico de migrations vive SO la (D10 de
-// docs/implementation-plans/epic-nest-sports.md). Este arquivo existe para o
-// backend gerar seu proprio client com output isolado. Ao mudar o schema:
-// editar em apps/web -> migrate la -> espelhar aqui reinjetando o bloco output.
-// Este app NUNCA cria migration.
+// ATENCAO: fonte da verdade do schema e este arquivo (apps/backend).
+// O historico de migrations vive em apps/backend/prisma/migrations.
+// apps/frontend/prisma/schema.prisma e copia espelhada (sem bloco output)
+// para o NextAuth gerar o client padrao. Ao mudar o schema:
+// editar aqui -> migrate aqui -> espelhar em apps/frontend.
 
 // Player.Action — Prisma Schema (rewrite limpo, 20/03/2026)
 // Guiado pelo business_rules.md

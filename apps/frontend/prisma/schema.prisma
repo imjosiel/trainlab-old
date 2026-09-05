@@ -1,10 +1,8 @@
-// TrainLab (web) — Prisma Schema.
-// FONTE DA VERDADE do schema: este arquivo. O backend espelha em
-// `apps/backend/prisma/schema.prisma` reinjetando o bloco `output` isolado
-// (o generate do backend grava em `../node_modules/.prisma-backend/client`
-// para não sobrescrever o `@prisma/client` hoisted que este app usa).
-// FLUXO: editar aqui -> `npx prisma migrate dev` aqui -> espelhar lá.
-// O web NUNCA cria migration a partir da cópia do backend.
+// TrainLab (frontend) — Prisma Schema (COPIA espelhada do backend).
+// FONTE DA VERDADE: `apps/backend/prisma/schema.prisma` (dono das migrations).
+// Este arquivo existe para o NextAuth gerar o client padrao (`@prisma/client`
+// hoisted). FLUXO: editar no backend -> migrate no backend -> espelhar aqui.
+// Este app NUNCA cria migration.
 
 // Player.Action — Prisma Schema (rewrite limpo, 20/03/2026)
 // Guiado pelo business_rules.md

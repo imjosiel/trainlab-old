@@ -1,11 +1,11 @@
 /**
  * lib/prisma.ts
  *
- * Singleton do PrismaClient para o web (NextAuth adapter + callbacks).
+ * Singleton do PrismaClient para o frontend (NextAuth adapter + callbacks).
  * Aponta para o MESMO banco que o backend. O histórico de migrations vive em
  * `apps/backend/prisma/migrations`; este app nunca cria migration — só gera o
  * client padrão (`@prisma/client` hoisted) a partir do schema espelhado em
- * `apps/web/prisma/schema.prisma`.
+ * `apps/frontend/prisma/schema.prisma`.
  */
 
 import { PrismaClient } from '@prisma/client'
