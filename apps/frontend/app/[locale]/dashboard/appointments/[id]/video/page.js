@@ -9,13 +9,14 @@ import { Loader2, ArrowLeft, Video, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 /**
- * Chamada Online embutida (fatia 37, frontend).
+ * Chamada Online (fatia 37, frontend).
  *
  * Busca a sala via BFF (`GET /api/backend/appointments/:id/video` — só
- * participante) e embute o provider:
- * - Jitsi: `external_api.js` com `userInfo` (displayName + email) para
- *   identificar quem entrou — sem JWT ainda (meet.jit.si MVP).
- * - Daily: Prebuilt em iframe (o token de owner fica para a fase 2).
+ * participante):
+ * - Daily: embute o Prebuilt em iframe (sem limite de 5 min).
+ * - Jitsi próprio: embute via `external_api.js` com `userInfo`.
+ * - Jitsi público (meet.jit.si): NÃO embute — o embed demo cai em 5 min.
+ *   Mostra cartão com abertura em nova guia. Moderação: quem entra primeiro.
  */
 export default function VideoCallPage() {
     const params = useParams()
@@ -45,8 +46,11 @@ export default function VideoCallPage() {
         return () => { cancelado = true }
     }, [id, session, status, router])
 
+    const dominioSala = sala ? extrairDominio(sala.joinUrl) : ''
+    const ehJitsiPublico = sala?.provider === 'jitsi' && dominioSala === 'meet.jit.si'
+
     useEffect(() => {
-        if (!sala || sala.provider !== 'jitsi') return
+        if (!sala || sala.provider !== 'jitsi' || ehJitsiPublico) return
         const montar = () => {
             if (!containerRef.current || !window.JitsiMeetExternalAPI) return
             apiRef.current?.dispose?.()
@@ -70,7 +74,7 @@ export default function VideoCallPage() {
         script.onerror = () => toast.error('Falha ao carregar o Jitsi')
         document.head.appendChild(script)
         return () => { apiRef.current?.dispose?.(); apiRef.current = null }
-    }, [sala, session])
+    }, [sala, session, ehJitsiPublico])
 
     if (loading || status === 'loading') {
         return (
@@ -116,7 +120,26 @@ export default function VideoCallPage() {
                 </Button>
             </div>
 
-            {sala.provider === 'jitsi' ? (
+            {ehJitsiPublico ? (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Abrir Chamada Online</CardTitle>
+                        <CardDescription>
+                            O embed do meet.jit.si é demonstração e cai em 5 minutos. Abra em nova guia para a chamada completa. Quem entrar primeiro assume a moderação.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-wrap gap-2">
+                        <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                            <a href={sala.joinUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="w-4 h-4 mr-1" /> Entrar na chamada em nova guia
+                            </a>
+                        </Button>
+                        <Button variant="outline" onClick={() => navigator.clipboard.writeText(sala.joinUrl).then(() => toast.success('Link copiado!'))}>
+                            Copiar link
+                        </Button>
+                    </CardContent>
+                </Card>
+            ) : sala.provider === 'jitsi' ? (
                 <div ref={containerRef} className="w-full rounded-xl overflow-hidden border bg-black min-h-[640px]" />
             ) : (
                 <div className="rounded-xl overflow-hidden border bg-black">
