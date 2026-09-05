@@ -106,9 +106,12 @@ function AppointmentDetailModal({ apt, open, onClose, onEdit, onDelete, onStatus
     const [savingNotes, setSavingNotes] = useState(false)
     const [linking, setLinking]   = useState(false)
     const [generatedUrl, setGeneratedUrl] = useState(null)
+    const [generatingVideo, setGeneratingVideo] = useState(false)
+    const [videoUrl, setVideoUrl] = useState(apt?.videoJoinUrl ?? null)
 
     // Sync notes when apt changes
     useEffect(() => { if (apt) setNotes(apt.trainerNotes ?? '') }, [apt])
+    useEffect(() => { setVideoUrl(apt?.videoJoinUrl ?? null) }, [apt?.id, apt?.videoJoinUrl])
 
     if (!apt) return null
 
@@ -175,6 +178,27 @@ function AppointmentDetailModal({ apt, open, onClose, onEdit, onDelete, onStatus
 
     const activeToken = apt.confirmToken ?? (generatedUrl ? generatedUrl.split('/').pop() : null)
 
+    const handleGenerateVideo = async () => {
+        setGeneratingVideo(true)
+        try {
+            const res  = await fetch(`/api/backend/appointments/${apt.id}/video`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({}),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            if (data.videoNotAvailable || !data.video?.joinUrl) {
+                toast.warning('Chamada Online indisponível no momento — tente de novo.')
+                return
+            }
+            setVideoUrl(data.video.joinUrl)
+            toast.success('Chamada Online gerada!')
+            onRefresh()
+        } catch (e) { toast.error(e.message) }
+        finally { setGeneratingVideo(false) }
+    }
+
     return (
         <Dialog open={open} onOpenChange={v => !v && onClose()}>
             <DialogContent className="max-w-2xl p-0 overflow-hidden">
@@ -221,12 +245,23 @@ function AppointmentDetailModal({ apt, open, onClose, onEdit, onDelete, onStatus
                                     </a>
                                 </div>
                             )}
-                            {apt.videoJoinUrl && (
+                            {(videoUrl ?? apt.videoJoinUrl) ? (
                                 <div className="flex items-center gap-2.5">
                                     <Video className="w-4 h-4 text-blue-600 flex-shrink-0" />
                                     <a href={`/dashboard/appointments/${apt.id}/video`} className="text-blue-700 font-medium hover:underline">
                                         Entrar na Chamada Online
                                     </a>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2.5">
+                                    <Video className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                    <button
+                                        onClick={handleGenerateVideo}
+                                        disabled={generatingVideo}
+                                        className="text-sm text-blue-700 font-medium hover:underline disabled:opacity-50 bg-transparent border-0 cursor-pointer p-0"
+                                    >
+                                        {generatingVideo ? 'Gerando chamada...' : 'Gerar Chamada Online'}
+                                    </button>
                                 </div>
                             )}
                             {apt.description && (
