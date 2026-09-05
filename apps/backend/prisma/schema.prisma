@@ -1084,6 +1084,10 @@ model Appointment {
   location        String?           @db.VarChar(200)
   googleMeetLink  String?           @db.VarChar(500)
   googleEventId   String?           @db.VarChar(200)
+  // Vídeo 1:1 próprio (fatia 37) — aditivo, Meet continua intacto
+  videoProvider   String?           @db.VarChar(20)
+  videoRoomName   String?           @db.VarChar(100)
+  videoJoinUrl    String?           @db.VarChar(500)
   status          AppointmentStatus @default(PENDING)
   trainerNotes    String?           @db.Text
   cancelReason    String?           @db.VarChar(500)

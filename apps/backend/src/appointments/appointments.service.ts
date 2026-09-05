@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
@@ -13,6 +14,7 @@ import { ROLES } from '@/common/constants';
 import { parsePage } from '@/common/pagination';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { PrismaService } from '@/prisma/prisma.service';
+import { PedidoVideo, SalaVideo, VideoService } from '@/video/video.service';
 import { CalendarService } from './calendar.service';
 import { CreateAppointmentBody, UpdateAppointmentBody } from './dtos';
 
@@ -71,6 +73,10 @@ export class AppointmentsService {
     private readonly prisma: PrismaService,
     private readonly calendar: CalendarService,
     private readonly notifications: NotificationsService,
+    // @Optional para não quebrar os specs antigos que instanciam com 3 args.
+    // Tipo sem união `| null`: com união o emitDecoratorMetadata vira Object
+    // e o Nest não resolve a dependência (vira undefined no e2e).
+    @Optional() private readonly video?: VideoService,
   ) {}
 
   /**
@@ -449,6 +455,102 @@ export class AppointmentsService {
 
     await this.prisma.appointment.delete({ where: { id } });
     return { message: 'Agendamento deletado' };
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * Vídeo 1:1 próprio (fatia 37) — aditivo, Meet continua intacto.
+   *
+   * Mesmo contrato do Meet: opcional e não-crítico. Falha externa vira
+   * `videoNotAvailable: true`, nunca 500 em escrita que funcionou (D66).
+   * Idempotente por agendamento: segunda chamada devolve a mesma sala sem
+   * tocar no provider (evita custo e expiração dupla).
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  async criarSalaDeVideo(
+    id: string,
+    user: SessionPayload,
+    body: { provider?: unknown },
+  ): Promise<{ video: SalaVideo | null; videoNotAvailable?: boolean }> {
+    const atual = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: { student: { select: { userId: true } } },
+    });
+    if (!atual) throw new NotFoundException({ error: 'Agendamento não encontrado' });
+    this.exigirParticipante(atual, user);
+
+    if (atual.videoJoinUrl && atual.videoRoomName && atual.videoProvider) {
+      return {
+        video: {
+          provider: atual.videoProvider as SalaVideo['provider'],
+          roomName: atual.videoRoomName,
+          joinUrl: atual.videoJoinUrl,
+        },
+      };
+    }
+
+    const pedido = this.pedidoVideoValido(body?.provider);
+    try {
+      const sala = await this.videoOrThrow().criarSala(
+        id,
+        { scheduledAt: new Date(atual.scheduledAt), durationMinutes: atual.durationMinutes ?? 60 },
+        pedido,
+      );
+      const atualizado = await this.prisma.appointment.update({
+        where: { id },
+        data: { videoProvider: sala.provider, videoRoomName: sala.roomName, videoJoinUrl: sala.joinUrl },
+      });
+      this.logger.log(`Sala de vídeo criada para ${id} via ${sala.provider}.`);
+      return {
+        video: {
+          provider: atualizado.videoProvider as SalaVideo['provider'],
+          roomName: atualizado.videoRoomName as string,
+          joinUrl: atualizado.videoJoinUrl as string,
+        },
+      };
+    } catch (erro) {
+      this.logger.warn(
+        `Agendamento ${id} sem vídeo próprio: ${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+      return { video: null, videoNotAvailable: true };
+    }
+  }
+
+  async lerSalaDeVideo(id: string, user: SessionPayload): Promise<SalaVideo> {
+    const atual = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: { student: { select: { userId: true } } },
+    });
+    if (!atual) throw new NotFoundException({ error: 'Agendamento não encontrado' });
+    this.exigirParticipante(atual, user);
+    if (!atual.videoJoinUrl || !atual.videoRoomName || !atual.videoProvider) {
+      throw new NotFoundException({ error: 'Sala de vídeo não gerada para este agendamento' });
+    }
+    return {
+      provider: atual.videoProvider as SalaVideo['provider'],
+      roomName: atual.videoRoomName,
+      joinUrl: atual.videoJoinUrl,
+    };
+  }
+
+  private exigirParticipante(
+    atual: { trainerId: string; athleteId?: string | null; student?: { userId?: string | null } | null },
+    user: SessionPayload,
+  ): void {
+    const participa =
+      user.isAdmin ||
+      atual.trainerId === user.id ||
+      atual.athleteId === user.id ||
+      atual.student?.userId === user.id;
+    if (!participa) throw new ForbiddenException({ error: 'Acesso negado' });
+  }
+
+  private pedidoVideoValido(bruto: unknown): PedidoVideo {
+    return bruto === 'daily' || bruto === 'jitsi' || bruto === 'auto' ? bruto : 'auto';
+  }
+
+  private videoOrThrow(): VideoService {
+    if (!this.video) throw new Error('VideoService não registrado.');
+    return this.video;
   }
 
   /* ────────────────────────────────────────────────────────────────────────

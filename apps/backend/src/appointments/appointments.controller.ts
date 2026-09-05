@@ -26,9 +26,11 @@ import {
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { Public } from '@/auth/public.decorator';
 import { SessionPayload } from '@/auth/session-payload';
+import { Throttle } from '@nestjs/throttler';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentBody, UpdateAppointmentBody } from './dtos';
 import { ConfirmAppointmentBody } from './confirm-dto';
+import { CreateVideoBody } from './video-dto';
 
 @ApiTags('appointments')
 @ApiBearerAuth()
@@ -131,5 +133,36 @@ export class AppointmentsController {
   @ApiOkResponse({ schema: { example: { message: 'Agendamento deletado' } } })
   remove(@Param('id') id: string, @CurrentUser() user: SessionPayload) {
     return this.appointments.remove(id, user);
+  }
+
+  @Post(':id/video')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Cria (ou reaproveita) a sala de vídeo 1:1 do agendamento.',
+    description:
+      'Aditivo à fatia 37: não toca no Google Meet. Idempotente por agendamento — ' +
+      'segunda chamada devolve a mesma sala sem custo. Falha externa vira ' +
+      '`videoNotAvailable`, nunca 500.',
+  })
+  @ApiNotFoundResponse({ schema: { example: { error: 'Agendamento não encontrado' } } })
+  @ApiForbiddenResponse({ schema: { example: { error: 'Acesso negado' } } })
+  criarVideo(
+    @Param('id') id: string,
+    @CurrentUser() user: SessionPayload,
+    @Body() body: CreateVideoBody,
+  ) {
+    return this.appointments.criarSalaDeVideo(id, user, body ?? {});
+  }
+
+  @Get(':id/video')
+  @ApiOperation({
+    summary: 'Lê a sala de vídeo do agendamento (só participante).',
+    description: 'Leitura pura: nunca cria sala. 404 se nunca gerada.',
+  })
+  @ApiNotFoundResponse({ schema: { example: { error: 'Sala de vídeo não gerada para este agendamento' } } })
+  @ApiForbiddenResponse({ schema: { example: { error: 'Acesso negado' } } })
+  lerVideo(@Param('id') id: string, @CurrentUser() user: SessionPayload) {
+    return this.appointments.lerSalaDeVideo(id, user);
   }
 }
