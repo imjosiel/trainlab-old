@@ -1,0 +1,70 @@
+# Render — backend Nest via Docker.
+#
+# Pré-requisitos no Dashboard (Environment, nunca commitado):
+#   DATABASE_URL / DIRECT_URL — Neon (mesmo banco do .env local)
+#   NEXTAUTH_SECRET             — MESMO valor da Vercel (frontend emite, backend consome)
+#   FRONTEND_URL                — URL pública da Vercel (CORS)
+#   NEXTAUTH_URL / NEXT_PUBLIC_BASE_URL — mesma URL da Vercel (links /confirm)
+#   GOOGLE_CLIENT_ID/SECRET    — mesmas credenciais da Vercel (Calendar opcional)
+#   PUSHER_*                    — mesmo app Pusher da Vercel
+#   STRIPE_*                    — chaves + segredos de webhook de PRODUÇÃO
+#   VIDEO_PROVIDER / DAILY_API_KEY / JITSI_* — conforme a fase do vídeo
+#
+# Webhooks Stripe em prod: recadastrar os 3 endpoints apontando para
+# https://<backend>.onrender.com/stripe/webhook-{b2b,credits,connect}
+# (segredos whsec_... diferentes dos de dev).
+
+services:
+  - type: web
+    name: trainlab-backend
+    runtime: docker
+    dockerfilePath: ./apps/backend/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Sem PORT fixo: o Render injeta $PORT e o Nest escuta process.env.PORT.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: PUSHER_APP_ID
+        sync: false
+      - key: NEXT_PUBLIC_PUSHER_KEY
+        sync: false
+      - key: PUSHER_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_PUSHER_CLUSTER
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_B2B
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_CREDITS
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_CONNECT
+        sync: false
+      - key: VIDEO_PROVIDER
+        value: auto
+      - key: DAILY_API_KEY
+        sync: false
+      - key: JITSI_DOMAIN
+        value: meet.jit.si
+      - key: JITSI_APP_ID
+        value: trainlab
+      - key: JITSI_JWT_SECRET
+        sync: false
