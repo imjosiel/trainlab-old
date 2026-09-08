@@ -1,0 +1,2723 @@
+openapi: 3.1.0
+
+info:
+  title: Player.Action API
+  description: |
+    API REST da plataforma **Player.Action** — Personal Training Platform for Sports Coaches.
+
+    ## Autenticação
+
+    A API suporta dois métodos de autenticação:
+    - **Cookie de Sessão** (browser): token `next-auth.session-token` gerenciado pelo NextAuth
+    - **Bearer Token** (integrações externas): `Authorization: Bearer <token>` — token JWT gerado via NextAuth
+
+    ## Roles e Permissões
+
+    | Role | Acesso |
+    |------|--------|
+    | `TRAINER` | Criar/gerenciar alunos, planos, agendamentos |
+    | `ATHLETE` | Ver próprios planos e agendamentos |
+    | `PARTNER` | Endpoints `/api/partner/*` |
+    | `AFFILIATE` | Endpoints `/api/affiliate/*` — programa de afiliados |
+    | `ADMIN` | Todos os endpoints + `/api/admin/*` |
+
+  version: "1.0.0"
+  contact:
+    name: Player.Action
+    url: https://playeraction.com.br
+
+servers:
+  - url: http://localhost:3001
+    description: Desenvolvimento Local
+  - url: https://playeraction.hidrasistemas.com.br
+    description: Produção
+
+tags:
+  - name: Público
+    description: Endpoints sem autenticação
+  - name: Dashboard
+    description: Estatísticas e visão geral do trainer
+  - name: Alunos
+    description: CRUD de alunos (requer TRAINER)
+  - name: Planos de Treino
+    description: Criação e gestão de planos de treino com IA
+  - name: Agendamentos
+    description: Agendamento de sessões entre trainer e atleta
+  - name: Notificações
+    description: Notificações do usuário autenticado
+  - name: Créditos
+    description: Saldo e histórico de créditos
+  - name: Exercícios
+    description: Biblioteca de exercícios
+  - name: Conversas
+    description: Mensagens entre trainer e atleta
+  - name: Perfil
+    description: Dados do usuário autenticado
+  - name: Partner
+    description: Endpoints do programa de parceiros (requer PARTNER)
+  - name: Afiliados
+    description: Programa de afiliados — Stripe Connect, sessões e sincronização (requer AFFILIATE)
+  - name: Admin
+    description: Endpoints administrativos (requer ADMIN)
+
+# ─── Security Schemes ─────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT gerado via NextAuth (`next-auth/jwt encode`)
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: Cookie de sessão gerenciado pelo browser (NextAuth)
+
+  # ─── Shared Schemas ───────────────────────────────────────────────────────
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+
+    # ── Usuário / Perfil ──────────────────────────────────────────────────
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cuid_abc123"
+        name:
+          type: string
+          example: "João Silva"
+        email:
+          type: string
+          format: email
+          example: "joao@example.com"
+        image:
+          type: string
+          nullable: true
+          example: "https://res.cloudinary.com/..."
+
+    # ── Partner Tier ──────────────────────────────────────────────────────
+    PartnerTier:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cmn4m3604000el6lb..."
+        slug:
+          type: string
+          example: "starter"
+        name:
+          type: string
+          example: "Starter"
+        description:
+          type: string
+          nullable: true
+          example: "Plano base para treinadores parceiros iniciantes."
+        price:
+          type: number
+          format: float
+          example: 0
+        commissionRate:
+          type: number
+          format: float
+          example: 0.6
+          description: Taxa de comissão (0.0 a 1.0)
+        minPrice:
+          type: number
+          format: float
+          example: 99.9
+        maxAthletes:
+          type: integer
+          nullable: true
+          example: null
+        maxPlansPerMonth:
+          type: integer
+          nullable: true
+          example: 10
+        allowFlexibleDistribution:
+          type: boolean
+          example: true
+        allowHourlyRate:
+          type: boolean
+          example: false
+        creditsPerPeriod:
+          type: integer
+          nullable: true
+          example: null
+        creditResetPeriod:
+          type: string
+          enum: [monthly, quarterly, yearly]
+          example: "monthly"
+
+    # ── Aluno / Student ───────────────────────────────────────────────────
+    AthleteProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        sportId:
+          type: string
+        sportName:
+          type: string
+        position:
+          type: string
+        technicalLevel:
+          type: string
+          nullable: true
+        yearsPlaying:
+          type: integer
+          nullable: true
+
+    StudentPlanCounts:
+      type: object
+      properties:
+        total:
+          type: integer
+        active:
+          type: integer
+        completed:
+          type: integer
+        pending:
+          type: integer
+
+    Student:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cuid_student123"
+        name:
+          type: string
+          example: "Carlos Mendes"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "carlos@example.com"
+        userId:
+          type: string
+          nullable: true
+        image:
+          type: string
+          nullable: true
+        profile:
+          $ref: '#/components/schemas/AthleteProfile'
+          nullable: true
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AthleteProfile'
+        since:
+          type: string
+          format: date-time
+        planCounts:
+          $ref: '#/components/schemas/StudentPlanCounts'
+
+    # ── Plano de Treino ───────────────────────────────────────────────────
+    TrainingPlanStatus:
+      type: string
+      enum: [DRAFT, PENDING, APPROVED, DELIVERED, COMPLETED, CANCELLED]
+
+    TrainingPlanSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/TrainingPlanStatus'
+        studentId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TrainingPlanSettings:
+      type: object
+      description: Configurações do plano ativo do atleta
+      properties:
+        allowAutoComplete:
+          type: boolean
+        showDayNumbers:
+          type: boolean
+
+    # ── Agendamento / Appointment ─────────────────────────────────────────
+    AppointmentStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, COMPLETED, CANCELLED, NO_SHOW]
+
+    Appointment:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          example: "Treino de velocidade"
+        description:
+          type: string
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T10:00:00.000Z"
+        durationMinutes:
+          type: integer
+          example: 60
+        location:
+          type: string
+          nullable: true
+          example: "Campo Municipal"
+        trainerNotes:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        trainerId:
+          type: string
+        studentId:
+          type: string
+          nullable: true
+        athleteId:
+          type: string
+          nullable: true
+        trainingPlanId:
+          type: string
+          nullable: true
+        student:
+          nullable: true
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+              nullable: true
+            user:
+              $ref: '#/components/schemas/UserSummary'
+              nullable: true
+        athlete:
+          $ref: '#/components/schemas/UserSummary'
+          nullable: true
+        trainer:
+          $ref: '#/components/schemas/UserSummary'
+          nullable: true
+        trainingPlan:
+          nullable: true
+          type: object
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            status:
+              $ref: '#/components/schemas/TrainingPlanStatus'
+
+    # ── Notificação ───────────────────────────────────────────────────────
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [SYSTEM, STUDENT_INVITE, PLAN_READY, APPOINTMENT, PAYMENT]
+        title:
+          type: string
+          example: "Novo agendamento! 📅"
+        message:
+          type: string
+        isRead:
+          type: boolean
+        link:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Dashboard Stats ───────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 42
+        pending:
+          type: integer
+          example: 5
+        approved:
+          type: integer
+          example: 10
+        completed:
+          type: integer
+          example: 25
+        cancelled:
+          type: integer
+          example: 2
+        plansByDay:
+          type: array
+          description: Últimos 30 dias de atividade
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        plansByStatus:
+          type: object
+          properties:
+            DRAFT:
+              type: integer
+            PENDING:
+              type: integer
+            APPROVED:
+              type: integer
+            DELIVERED:
+              type: integer
+            COMPLETED:
+              type: integer
+            CANCELLED:
+              type: integer
+
+    # ── Exercício ─────────────────────────────────────────────────────────
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          example: "Sprints 10m"
+        description:
+          type: string
+          nullable: true
+        videoUrl:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        difficulty:
+          type: string
+          nullable: true
+        sport:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+
+    # ── Módulos (Feature Flags públicas) ─────────────────────────────────
+    ModuleFlags:
+      type: object
+      description: Flags de módulos habilitados na plataforma
+      properties:
+        moduleAthleteEnabled:
+          type: boolean
+          description: Módulo de atleta independente habilitado
+          example: false
+        moduleCoachEnabled:
+          type: boolean
+          description: Módulo de treinador SaaS habilitado
+          example: false
+        modulePartnerB2BEnabled:
+          type: boolean
+          description: Módulo de parceiro B2B habilitado
+          example: true
+        moduleAffiliateEnabled:
+          type: boolean
+          description: Módulo de afiliados habilitado
+          example: true
+
+    # ── Conta de Afiliado ────────────────────────────────────────────────
+    AffiliateAccount:
+      type: object
+      description: Conta do programa de afiliados vinculada a um usuário
+      properties:
+        id:
+          type: string
+          example: "cuid_aff123"
+        userId:
+          type: string
+          example: "cuid_user456"
+        referralCode:
+          type: string
+          description: Código único de indicação do afiliado
+          example: "afiliado-josiel"
+        pendingBalance:
+          type: integer
+          description: Saldo pendente em centavos (aguardando carência)
+          example: 15000
+        availableBalance:
+          type: integer
+          description: Saldo disponível para saque em centavos
+          example: 50000
+        status:
+          type: string
+          enum: [approved, suspended]
+          description: Status da conta de afiliado
+          example: "approved"
+        customCommissionRate:
+          type: number
+          format: float
+          nullable: true
+          description: Taxa de comissão personalizada (override do tier)
+          example: 0.02
+        stripeAccountId:
+          type: string
+          nullable: true
+          description: ID da conta Stripe Connect do afiliado
+          example: "acct_1abc123"
+        stripeAccountStatus:
+          type: string
+          enum: [not_started, pending, active, restricted]
+          description: Status da conta Stripe Connect
+          example: "active"
+        payoutsEnabled:
+          type: boolean
+          description: Se a conta Stripe pode receber pagamentos
+          example: true
+        chargesEnabled:
+          type: boolean
+          description: Se a conta Stripe pode processar cobranças
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ── Ganhos do Afiliado ───────────────────────────────────────────────
+    AffiliateEarning:
+      type: object
+      description: Registro de comissão gerada por uma assinatura indicada pelo afiliado
+      properties:
+        id:
+          type: string
+          example: "cuid_earn789"
+        affiliateId:
+          type: string
+          description: ID da AffiliateAccount
+        partnerId:
+          type: string
+          description: ID da PartnerAccount que gerou o ganho
+        grossAmount:
+          type: integer
+          description: Total pago pelo aluno em centavos (price + hourlyRate)
+          example: 19900
+        baseAmount:
+          type: integer
+          description: Valor base da oferta em centavos (sobre o qual a comissão incide)
+          example: 14900
+        earnedAmount:
+          type: integer
+          description: Comissão calculada em centavos
+          example: 149
+        commissionRate:
+          type: number
+          format: float
+          description: Taxa de comissão aplicada no momento do cálculo
+          example: 0.01
+        status:
+          type: string
+          enum: [pending, available, paid, cancelled]
+          description: Status do ganho
+          example: "pending"
+        subscriptionId:
+          type: string
+          nullable: true
+          description: ID da assinatura Stripe de origem
+        invoiceId:
+          type: string
+          nullable: true
+          description: ID da invoice Stripe (idempotência)
+        createdAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ── Configurações do Sistema (Admin) ─────────────────────────────────
+    SystemSettings:
+      type: object
+      description: Configurações globais da plataforma (feature flags, regras de negócio, IA)
+      properties:
+        id:
+          type: string
+        moduleAthleteEnabled:
+          type: boolean
+          example: false
+        moduleCoachEnabled:
+          type: boolean
+          example: false
+        modulePartnerB2BEnabled:
+          type: boolean
+          example: true
+        moduleAffiliateEnabled:
+          type: boolean
+          example: true
+        autoApprovePartners:
+          type: boolean
+          description: Aprovar parceiros automaticamente ao se candidatar
+          example: true
+        autoApproveTierChange:
+          type: boolean
+          description: Aprovar mudanças de tier automaticamente
+          example: true
+        defaultCommissionRate:
+          type: number
+          format: float
+          description: Taxa de comissão padrão (0.0 a 1.0)
+          example: 0.15
+        allowMultipleTrainersPerSport:
+          type: boolean
+          example: false
+        enableVideoHoverPreview:
+          type: boolean
+          example: true
+        videoHoverType:
+          type: string
+          enum: [TEASER, FULL, THUMBNAIL]
+          example: "TEASER"
+        enableB2BTestMode:
+          type: boolean
+          example: false
+        storageProvider:
+          type: string
+          enum: [r2, cloudinary]
+          example: "r2"
+        aiProvider:
+          type: string
+          enum: [groq, gemini]
+          example: "groq"
+        geminiModel:
+          type: string
+          example: "gemini-2.0-flash"
+        enableCreditSystem:
+          type: boolean
+          example: false
+        creditCostPlanGen:
+          type: integer
+          description: Custo em créditos para gerar um plano via IA
+          example: 10
+        creditCostAiVideo:
+          type: integer
+          description: Custo em créditos para gerar vídeo via IA
+          example: 50
+        uiTheme:
+          type: string
+          enum: [light, dark-blue]
+          example: "light"
+        updatedAt:
+          type: string
+          format: date-time
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+paths:
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # PÚBLICO
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/public/partner-tiers:
+    get:
+      tags: [Público]
+      summary: Listar tiers de parceiros disponíveis
+      description: Retorna todos os tiers do programa de parceiros. Não requer autenticação.
+      operationId: getPublicPartnerTiers
+      responses:
+        '200':
+          description: Lista de tiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tiers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PartnerTier'
+              example:
+                tiers:
+                  - id: "cmn4m3604000el6lb..."
+                    slug: "starter"
+                    name: "Starter"
+                    price: 0
+                    commissionRate: 0.6
+                    minPrice: 99.9
+                    maxAthletes: null
+                    maxPlansPerMonth: 10
+                    allowFlexibleDistribution: true
+                    allowHourlyRate: false
+
+  /api/public/modules:
+    get:
+      tags: [Público]
+      summary: Retornar módulos habilitados
+      description: Retorna quais módulos (Athlete, Coach, Partner, Affiliate) estão ativos no momento.
+      operationId: getPublicModules
+      responses:
+        '200':
+          description: Módulos ativos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleFlags'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # DASHBOARD
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Estatísticas do trainer
+      description: Retorna métricas de planos criados, status distribution e atividade dos últimos 30 dias.
+      operationId: getDashboardStats
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Estatísticas do dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ALUNOS
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/students:
+    get:
+      tags: [Alunos]
+      summary: Listar alunos do trainer
+      description: |
+        Retorna todos os alunos do trainer autenticado.
+        Admin pode ver alunos de outro trainer via `?trainerId=`.
+      operationId: getStudents
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Busca por nome (ILIKE)
+          schema:
+            type: string
+            maxLength: 100
+        - name: search
+          in: query
+          description: Alias de `q` (legado)
+          schema:
+            type: string
+        - name: trainerId
+          in: query
+          description: Filtrar por trainer (apenas ADMIN)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de alunos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  students:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Student'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Sem permissão (não é TRAINER)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Alunos]
+      summary: Criar aluno
+      description: |
+        Cria um novo aluno para o trainer autenticado.
+        Se o email já tiver conta, vincula automaticamente.
+        Envia email de convite ao atleta (fire-and-forget).
+        Requer role TRAINER.
+      operationId: createStudent
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  example: "Carlos Mendes"
+                email:
+                  type: string
+                  format: email
+                  example: "carlos@example.com"
+                sportId:
+                  type: string
+                  description: ID do esporte (prioritário sobre slug)
+                sport:
+                  type: string
+                  description: Slug do esporte (fallback)
+                  example: "football"
+                position:
+                  type: string
+                  maxLength: 50
+                  example: "Atacante"
+      responses:
+        '200':
+          description: Aluno criado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Aluno adicionado com sucesso"
+                  student:
+                    $ref: '#/components/schemas/Student'
+        '400':
+          description: Dados inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Sem permissão ou limite de atletas atingido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/students/{id}:
+    get:
+      tags: [Alunos]
+      summary: Buscar aluno por ID
+      operationId: getStudentById
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dados do aluno
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  student:
+                    $ref: '#/components/schemas/Student'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Alunos]
+      summary: Atualizar dados do aluno
+      operationId: updateStudent
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                position:
+                  type: string
+      responses:
+        '200':
+          description: Aluno atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  student:
+                    $ref: '#/components/schemas/Student'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Alunos]
+      summary: Remover aluno
+      operationId: deleteStudent
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aluno removido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/students/invite:
+    post:
+      tags: [Alunos]
+      summary: Reenviar convite de aluno
+      description: Reenvia o email de convite para um aluno existente.
+      operationId: resendStudentInvite
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId]
+              properties:
+                studentId:
+                  type: string
+      responses:
+        '200':
+          description: Convite reenviado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # PLANOS DE TREINO
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/training-plans:
+    get:
+      tags: [Planos de Treino]
+      summary: Listar planos de treino
+      description: |
+        Trainer vê os planos que criou.
+        Atleta/Aluno vê os próprios planos.
+        Admin pode filtrar por trainer.
+      operationId: getTrainingPlans
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TrainingPlanStatus'
+        - name: studentId
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Lista de planos paginada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrainingPlanSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Planos de Treino]
+      summary: Criar plano de treino com IA
+      description: |
+        Cria um novo plano de treino usando IA (Groq/Gemini/Ollama).
+        O plano é gerado em 2 fases para otimizar qualidade.
+        Consome créditos do trainer.
+        Requer role TRAINER.
+      operationId: createTrainingPlan
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, daysPerWeek]
+              properties:
+                studentId:
+                  type: string
+                  description: ID do aluno (Student model)
+                title:
+                  type: string
+                  maxLength: 150
+                daysPerWeek:
+                  type: integer
+                  minimum: 1
+                  maximum: 7
+                  example: 3
+                durationWeeks:
+                  type: integer
+                  minimum: 1
+                  maximum: 52
+                  example: 4
+                objective:
+                  type: string
+                  example: "Aumentar velocidade em sprints de 10m"
+                notes:
+                  type: string
+                  description: Notas adicionais para o prompt de IA
+                useAI:
+                  type: boolean
+                  default: true
+                  description: Se false, cria plano vazio sem IA
+      responses:
+        '201':
+          description: Plano criado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/TrainingPlanSummary'
+        '400':
+          description: Requisição inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit atingido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/training-plans/active:
+    get:
+      tags: [Planos de Treino]
+      summary: Planos ativos do atleta autenticado
+      description: Retorna os planos com status APPROVED ou DELIVERED para o atleta logado.
+      operationId: getActiveTrainingPlans
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Planos ativos e configurações
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrainingPlanSummary'
+                  settings:
+                    $ref: '#/components/schemas/TrainingPlanSettings'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/training-plans/{id}:
+    get:
+      tags: [Planos de Treino]
+      summary: Buscar plano por ID
+      operationId: getTrainingPlanById
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dados completos do plano
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/TrainingPlanSummary'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Planos de Treino]
+      summary: Atualizar plano
+      operationId: updateTrainingPlan
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/TrainingPlanStatus'
+      responses:
+        '200':
+          description: Plano atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/TrainingPlanSummary'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Planos de Treino]
+      summary: Deletar plano
+      operationId: deleteTrainingPlan
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plano removido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # AGENDAMENTOS
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/appointments:
+    get:
+      tags: [Agendamentos]
+      summary: Listar agendamentos
+      description: |
+        Trainer e Admin veem todos os seus agendamentos.
+        Atleta/Aluno vê apenas os próprios.
+      operationId: getAppointments
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AppointmentStatus'
+        - name: from
+          in: query
+          description: Data de início (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2026-04-01T00:00:00.000Z"
+        - name: to
+          in: query
+          description: Data de fim (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2026-04-30T23:59:59.000Z"
+        - name: trainerId
+          in: query
+          description: Filtrar por trainer (apenas ADMIN)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de agendamentos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Agendamentos]
+      summary: Criar agendamento
+      description: Cria um agendamento entre trainer e atleta/aluno. Envia notificação ao atleta.
+      operationId: createAppointment
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, scheduledAt]
+              properties:
+                title:
+                  type: string
+                  maxLength: 150
+                  example: "Treino de sprints"
+                scheduledAt:
+                  type: string
+                  format: date-time
+                  example: "2026-04-01T10:00:00.000Z"
+                durationMinutes:
+                  type: integer
+                  default: 60
+                  example: 90
+                location:
+                  type: string
+                  nullable: true
+                  example: "Campo Municipal"
+                description:
+                  type: string
+                  nullable: true
+                trainerNotes:
+                  type: string
+                  nullable: true
+                studentId:
+                  type: string
+                  description: ID do Student (StudentRecord). Obrigatório se athleteId não informado.
+                athleteId:
+                  type: string
+                  description: ID do User atleta. Obrigatório se studentId não informado.
+                trainingPlanId:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Agendamento criado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointment:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Requisição inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/appointments/{id}:
+    get:
+      tags: [Agendamentos]
+      summary: Buscar agendamento por ID
+      operationId: getAppointmentById
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dados do agendamento
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointment:
+                    $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Agendamentos]
+      summary: Atualizar agendamento
+      operationId: updateAppointment
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                scheduledAt:
+                  type: string
+                  format: date-time
+                durationMinutes:
+                  type: integer
+                location:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/AppointmentStatus'
+      responses:
+        '200':
+          description: Agendamento atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointment:
+                    $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Agendamentos]
+      summary: Cancelar/remover agendamento
+      operationId: deleteAppointment
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Agendamento removido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Proibido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/appointments/confirm:
+    post:
+      tags: [Agendamentos]
+      summary: Confirmar agendamento
+      description: Atleta confirma presença em um agendamento pendente.
+      operationId: confirmAppointment
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appointmentId]
+              properties:
+                appointmentId:
+                  type: string
+      responses:
+        '200':
+          description: Agendamento confirmado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointment:
+                    $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # NOTIFICAÇÕES
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/notifications:
+    get:
+      tags: [Notificações]
+      summary: Listar notificações do usuário
+      operationId: getNotifications
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Lista de notificações
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Notificações]
+      summary: Marcar notificações como lidas
+      operationId: markNotificationsRead
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: IDs específicos. Se vazio, marca todas como lidas.
+      responses:
+        '200':
+          description: Notificações atualizadas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # CRÉDITOS
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/credits:
+    get:
+      tags: [Créditos]
+      summary: Saldo e histórico de créditos
+      description: Retorna o saldo atual e o histórico de transações de créditos do trainer.
+      operationId: getCredits
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Dados de créditos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance:
+                    type: integer
+                    example: 150
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        amount:
+                          type: integer
+                          description: Positivo = crédito, negativo = débito
+                        description:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # EXERCÍCIOS
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/exercises:
+    get:
+      tags: [Exercícios]
+      summary: Listar exercícios
+      description: Biblioteca de exercícios filtráveis por esporte, categoria e dificuldade.
+      operationId: getExercises
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Busca por nome
+          schema:
+            type: string
+        - name: sportId
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de exercícios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exercises:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Exercise'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Exercícios]
+      summary: Criar exercício personalizado
+      operationId: createExercise
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: "Juggling 1 minuto"
+                description:
+                  type: string
+                videoUrl:
+                  type: string
+                  format: uri
+                category:
+                  type: string
+                difficulty:
+                  type: string
+                  enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+                sportId:
+                  type: string
+      responses:
+        '201':
+          description: Exercício criado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exercise:
+                    $ref: '#/components/schemas/Exercise'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/exercises/{id}:
+    get:
+      tags: [Exercícios]
+      summary: Buscar exercício por ID
+      operationId: getExerciseById
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dados do exercício
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exercise:
+                    $ref: '#/components/schemas/Exercise'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # AFILIADOS
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/affiliate/earnings:
+    get:
+      tags: [Afiliados]
+      summary: Listar ganhos do afiliado (paginado)
+      description: |
+        Retorna o histórico de comissões do afiliado autenticado com paginação e filtro por data.
+        Máximo de 50 itens por página. Rate limit: 20 req/min.
+      operationId: getAffiliateEarnings
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Número da página (>= 1)
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: Itens por página (1-50)
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+        - name: startDate
+          in: query
+          description: Data inicial (ISO 8601)
+          schema:
+            type: string
+            format: date
+            example: "2026-01-01"
+        - name: endDate
+          in: query
+          description: Data final (ISO 8601, deve ser >= startDate)
+          schema:
+            type: string
+            format: date
+            example: "2026-12-31"
+      responses:
+        '200':
+          description: Lista paginada de ganhos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [earnings, total, page, limit, totalPages]
+                properties:
+                  earnings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AffiliateEarning'
+                  total:
+                    type: integer
+                    description: Total de registros
+                    example: 42
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+                  totalPages:
+                    type: integer
+                    example: 3
+        '400':
+          description: Parâmetros inválidos (ex. endDate < startDate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Acesso restrito a afiliados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/affiliate/report:
+    get:
+      tags: [Afiliados]
+      summary: Relatório detalhado do afiliado
+      description: |
+        Retorna breakdown por parceiro indicado com contagem de alunos,
+        ganhos mensais, e projeção de MRR. Rate limit: 10 req/min.
+      operationId: getAffiliateReport
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Relatório completo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  partners:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        image:
+                          type: string
+                          nullable: true
+                        tier:
+                          type: string
+                        status:
+                          type: string
+                        activeStudentsCount:
+                          type: integer
+                        totalEarned:
+                          type: integer
+                          description: Em centavos
+                        earnedThisMonth:
+                          type: integer
+                        lastEarningDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        earningsByMonth:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              month:
+                                type: string
+                                example: "2026-07"
+                              total:
+                                type: integer
+                  projection:
+                    type: object
+                    properties:
+                      currentMonthTotal:
+                        type: integer
+                      lastMonthTotal:
+                        type: integer
+                      estimatedMrr:
+                        type: integer
+                      trend:
+                        type: string
+                        enum: [up, down, stable]
+                      earningsByMonth:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            month:
+                              type: string
+                            total:
+                              type: integer
+                            label:
+                              type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Acesso restrito a afiliados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/affiliate/connect/setup:
+    post:
+      tags: [Afiliados]
+      summary: Configurar conta Stripe Connect do afiliado
+      description: |
+        Cria uma Connected Account no Stripe para o afiliado autenticado.
+        Se já existir uma conta Stripe associada, retorna o ID existente.
+        Busca contas Stripe existentes por metadata antes de criar uma nova.
+        Requer role AFFILIATE ou ADMIN.
+      operationId: affiliateConnectSetup
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Conta Stripe Connect configurada (existente ou nova)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stripeAccountId]
+                properties:
+                  stripeAccountId:
+                    type: string
+                    description: ID da Connected Account no Stripe
+                    example: "acct_1abc123def456"
+        '401':
+          description: Não autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Não autorizado"
+        '403':
+          description: Acesso restrito a afiliados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Acesso restrito a afiliados."
+        '404':
+          description: Conta de afiliado não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Conta de afiliado não encontrada."
+        '500':
+          description: Erro interno ao criar conta Stripe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Erro ao criar conta Stripe Connect. Tente novamente."
+
+  /api/affiliate/connect/session:
+    post:
+      tags: [Afiliados]
+      summary: Criar sessão Stripe Connect para embed de UI
+      description: |
+        Cria uma Account Session no Stripe para renderizar componentes embarcados
+        (account_onboarding, account_management, payouts) no frontend.
+        A conta Stripe Connect deve ter sido configurada previamente via `/api/affiliate/connect/setup`.
+      operationId: affiliateConnectSession
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                components:
+                  type: array
+                  description: Componentes Stripe Connect a habilitar na sessão
+                  items:
+                    type: string
+                    enum: [account_onboarding, account_management, payouts]
+                  default: [account_onboarding]
+                  example: [account_onboarding]
+      responses:
+        '200':
+          description: Sessão criada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clientSecret]
+                properties:
+                  clientSecret:
+                    type: string
+                    description: Client secret para inicializar o Stripe Connect embed
+                    example: "seti_1abc...secret_xyz"
+        '400':
+          description: Conta Stripe não configurada ou componentes inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_configured:
+                  value:
+                    error: "Conta Stripe Connect não configurada. Complete o setup primeiro."
+                invalid_components:
+                  value:
+                    error: "Nenhum componente válido especificado. Use: account_onboarding, account_management, payouts."
+        '401':
+          description: Não autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno ao criar sessão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Falha ao iniciar sessão bancária. Tente novamente."
+
+  /api/affiliate/connect/sync:
+    post:
+      tags: [Afiliados]
+      summary: Sincronizar status do Stripe Connect com o banco
+      description: |
+        Consulta o status real da conta Stripe Connect e atualiza o banco de dados local.
+        Verifica payouts_enabled, charges_enabled e requirements.disabled_reason
+        para determinar se o status é 'active', 'pending' ou 'restricted'.
+
+        Quando payoutsEnabled muda de false→true e há earnings pendentes,
+        executa flush automático: transfere cada earning via Stripe e
+        atualiza status de 'pending' para 'available'.
+      operationId: affiliateConnectSync
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Status sincronizado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payoutsEnabled, chargesEnabled, stripeAccountStatus]
+                properties:
+                  payoutsEnabled:
+                    type: boolean
+                    description: Se a conta Stripe pode receber payouts
+                    example: true
+                  chargesEnabled:
+                    type: boolean
+                    description: Se a conta Stripe pode processar cobranças
+                    example: true
+                  stripeAccountStatus:
+                    type: string
+                    enum: [pending, active, restricted]
+                    description: Status calculado da conta Stripe
+                    example: "active"
+                  flushedEarnings:
+                    type: integer
+                    description: Número de earnings pendentes que foram transferidos automaticamente (presente apenas quando houve flush)
+                    example: 3
+        '400':
+          description: Conta Stripe Connect não configurada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Conta Stripe Connect não configurada."
+        '401':
+          description: Não autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro ao sincronizar com Stripe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Erro ao sincronizar status do Stripe."
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # PARTNER
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/partner/tiers:
+    get:
+      tags: [Partner]
+      summary: Tiers disponíveis para o parceiro
+      description: Retorna os tiers do programa de parceiros com dados privados adicionais.
+      operationId: getPartnerTiers
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Lista de tiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tiers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PartnerTier'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/partner/metrics:
+    get:
+      tags: [Partner]
+      summary: Métricas do parceiro
+      description: Retorna comissões, vendas e performance do parceiro autenticado.
+      operationId: getPartnerMetrics
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Métricas do parceiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalCommissions:
+                    type: number
+                    format: float
+                  totalSales:
+                    type: integer
+                  subscribers:
+                    type: integer
+                  activeSubscribers:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/partner/settings:
+    get:
+      tags: [Partner]
+      summary: Configurações da conta parceira
+      operationId: getPartnerSettings
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Configurações do parceiro
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [Partner]
+      summary: Atualizar configurações da conta parceira
+      operationId: updatePartnerSettings
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configurações atualizadas
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/partner/subscribers:
+    get:
+      tags: [Partner]
+      summary: Assinantes do parceiro
+      description: Lista os trainers assinantes vinculados ao parceiro.
+      operationId: getPartnerSubscribers
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Lista de assinantes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscribers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/partner/apply:
+    post:
+      tags: [Partner]
+      summary: Candidatura ao programa de parceiros
+      description: Envia candidatura para ser parceiro da plataforma.
+      operationId: applyPartner
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tierId]
+              properties:
+                tierId:
+                  type: string
+                  description: ID do tier desejado
+                motivation:
+                  type: string
+                  description: Mensagem de motivação/apresentação
+      responses:
+        '201':
+          description: Candidatura enviada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ADMIN
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      summary: Listar todos os usuários (ADMIN)
+      operationId: adminGetUsers
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/partners:
+    get:
+      tags: [Admin]
+      summary: Listar contas de parceiros (ADMIN)
+      operationId: adminGetPartners
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Lista de parceiros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    tierId:
+                      type: string
+                    status:
+                      type: string
+                    user:
+                      $ref: '#/components/schemas/UserSummary'
+                    createdAt:
+                      type: string
+                      format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/overview:
+    get:
+      tags: [Admin]
+      summary: Visão geral da plataforma (ADMIN)
+      operationId: adminGetOverview
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Métricas gerais da plataforma
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUsers:
+                    type: integer
+                  totalTrainers:
+                    type: integer
+                  totalStudents:
+                    type: integer
+                  totalPlans:
+                    type: integer
+                  totalPartners:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/settings:
+    get:
+      tags: [Admin]
+      summary: Retornar configurações da plataforma
+      description: |
+        Retorna todas as configurações do sistema (feature flags, regras de negócio, IA, créditos, UI).
+        Requer autenticação — qualquer usuário logado pode ler.
+        Resposta cacheada por 30 segundos com stale-while-revalidate de 60s.
+      operationId: adminGetSettings
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Configurações completas do sistema
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "private, max-age=30, stale-while-revalidate=60"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Admin]
+      summary: Atualizar configurações da plataforma
+      description: |
+        Atualiza as configurações globais do sistema.
+        Apenas campos enviados no body são atualizados (merge parcial).
+        Invalida o cache de `system-settings` via `revalidateTag`.
+        Requer role ADMIN.
+      operationId: adminUpdateSettings
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Campos parciais — apenas envie os que deseja alterar
+              properties:
+                moduleAthleteEnabled:
+                  type: boolean
+                moduleCoachEnabled:
+                  type: boolean
+                modulePartnerB2BEnabled:
+                  type: boolean
+                moduleAffiliateEnabled:
+                  type: boolean
+                autoApprovePartners:
+                  type: boolean
+                autoApproveTierChange:
+                  type: boolean
+                defaultCommissionRate:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                  description: Taxa de comissão padrão (0.0 a 1.0)
+                allowMultipleTrainersPerSport:
+                  type: boolean
+                enableVideoHoverPreview:
+                  type: boolean
+                videoHoverType:
+                  type: string
+                  enum: [TEASER, FULL, THUMBNAIL]
+                enableB2BTestMode:
+                  type: boolean
+                storageProvider:
+                  type: string
+                  enum: [r2, cloudinary]
+                aiProvider:
+                  type: string
+                  enum: [groq, gemini]
+                geminiModel:
+                  type: string
+                enableCreditSystem:
+                  type: boolean
+                creditCostPlanGen:
+                  type: integer
+                  minimum: 0
+                  maximum: 10000
+                creditCostAiVideo:
+                  type: integer
+                  minimum: 0
+                  maximum: 10000
+                uiTheme:
+                  type: string
+                  enum: [light, dark-blue]
+            example:
+              moduleAffiliateEnabled: true
+              aiProvider: "groq"
+              defaultCommissionRate: 0.15
+      responses:
+        '200':
+          description: Configurações atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+        '401':
+          description: Não autorizado (requer ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+# ─── Shared Responses ─────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Não autenticado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized"
+
+    Forbidden:
+      description: Sem permissão
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Forbidden"
+
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Not found"
+
+    BadRequest:
+      description: Dados inválidos na requisição
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "title e scheduledAt são obrigatórios"

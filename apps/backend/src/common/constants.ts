@@ -36,3 +36,14 @@ export const ADMIN_SYSTEM_ROLES: SystemRoleValue[] = [
   SYSTEM_ROLES.ADMIN,
   SYSTEM_ROLES.MODERATOR,
 ];
+
+export const PLAN_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  DELIVERED: 'DELIVERED',
+  COMPLETED: 'COMPLETED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+export type PlanStatusValue = (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS];

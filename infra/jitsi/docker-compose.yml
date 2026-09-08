@@ -1,0 +1,61 @@
+services:
+  prosody:
+    image: jitsi/prosody:stable
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      XMPP_DOMAIN: ${XMPP_DOMAIN}
+      XMPP_AUTH_DOMAIN: auth.${XMPP_DOMAIN}
+      XMPP_MUC_DOMAIN: muc.${XMPP_DOMAIN}
+      XMPP_INTERNAL_MUC_DOMAIN: internal-muc.${XMPP_DOMAIN}
+      XMPP_RECORDER_DOMAIN: recorder.${XMPP_DOMAIN}
+      XMPP_HIDDEN_DOMAIN: hidden.${XMPP_DOMAIN}
+      JVB_AUTH_USER: jvb
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD}
+      JICOFO_AUTH_USER: focus
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD}
+      JICOFO_AUTH_DOMAIN: auth.${XMPP_DOMAIN}
+      TZ: ${TZ:-America/Sao_Paulo}
+    volumes:
+      - ./prosody/config:/config
+    networks:
+      - jitsi
+
+  jicofo:
+    image: jitsi/jicofo:stable
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - prosody
+    networks:
+      - jitsi
+
+  jvb:
+    image: jitsi/jvb:stable
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "10000:10000/udp"
+    depends_on:
+      - prosody
+    networks:
+      - jitsi
+
+  web:
+    image: jitsi/web:stable
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./web/config:/config
+    depends_on:
+      - prosody
+      - jicofo
+    networks:
+      - jitsi
+
+networks:
+  jitsi:
+    driver: bridge

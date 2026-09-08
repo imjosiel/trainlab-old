@@ -1,0 +1,63 @@
+import { Module } from '@nestjs/common';
+import { AdminPartnersController } from './admin-partners.controller';
+import { AdminPartnersService } from './admin-partners.service';
+import { AdminPartnersActionsService } from './admin-partners-actions.service';
+import { AdminReportsController } from './admin-reports.controller';
+import { AdminReportsService } from './admin-reports.service';
+import { AdminReportsExportController } from './admin-reports-export.controller';
+import { AdminReportsExportService } from './admin-reports-export.service';
+import { AdminReportsIdController } from './admin-reports-id.controller';
+import { AdminReportsIdService } from './admin-reports-id.service';
+import { AdminReportsPublishController } from './admin-reports-publish.controller';
+import { AdminReportsPublishService } from './admin-reports-publish.service';
+import { AdminAffiliatesController } from './admin-affiliates.controller';
+import { AdminAffiliatesService } from './admin-affiliates.service';
+import { AdminAffiliatesReservedController } from './admin-affiliates-reserved.controller';
+import { AdminAffiliatesReservedService } from './admin-affiliates-reserved.service';
+import { AdminAuditLogsController } from './admin-audit-logs.controller';
+import { AdminAuditLogsService } from './admin-audit-logs.service';
+import { AdminCloudinaryController } from './admin-cloudinary.controller';
+import { AdminCloudinaryService } from './admin-cloudinary.service';
+import { AdminFinanceController } from './admin-finance.controller';
+import { AdminFinanceService } from './admin-finance.service';
+import { AdminFixStorageController } from './admin-fix-storage.controller';
+import { AdminFixStorageService } from './admin-fix-storage.service';
+import { AdminMetricsB2bController } from './admin-metrics-b2b.controller';
+import { AdminMetricsB2bService } from './admin-metrics-b2b.service';
+import { AdminOverviewController } from './admin-overview.controller';
+import { AdminOverviewService } from './admin-overview.service';
+import { AdminPartnersPayoutsController } from './admin-partners-payouts.controller';
+import { AdminPartnersPayoutsService } from './admin-partners-payouts.service';
+import { AdminPartnersRevenueController } from './admin-partners-revenue.controller';
+import { AdminPartnersRevenueService } from './admin-partners-revenue.service';
+import { AdminPlatformFinanceController } from './admin-platform-finance.controller';
+import { AdminPlatformFinanceService } from './admin-platform-finance.service';
+import { AdminR2StorageController } from './admin-r2-storage.controller';
+import { AdminR2StorageService } from './admin-r2-storage.service';
+import { AdminSettingsController } from './admin-settings.controller';
+import { AdminSettingsService } from './admin-settings.service';
+import { AdminStripeConnectController } from './admin-stripe-connect.controller';
+import { AdminStripeConnectService } from './admin-stripe-connect.service';
+import { AdminTiersController } from './admin-tiers.controller';
+import { AdminTiersIdController } from './admin-tiers-id.controller';
+import { AdminTiersIdService } from './admin-tiers-id.service';
+import { AdminTiersService } from './admin-tiers.service';
+import { AdminUsersActionsController } from './admin-users-actions.controller';
+import { AdminUsersActionsService } from './admin-users-actions.service';
+import { AdminUsersController } from './admin-users.controller';
+import { AdminUsersSearchController } from './admin-users-search.controller';
+import { AdminUsersSearchService } from './admin-users-search.service';
+import { AdminUsersService } from './admin-users.service';
+import { AdminVideoProcessorController } from './admin-video-processor.controller';
+import { AdminVideoProcessorService } from './admin-video-processor.service';
+@Module({
+  controllers: [
+    AdminPartnersController, AdminReportsController, AdminReportsExportController, AdminReportsIdController, AdminReportsPublishController, AdminSettingsController, AdminUsersController, AdminUsersActionsController, AdminUsersSearchController,
+    AdminAffiliatesController, AdminAffiliatesReservedController, AdminAuditLogsController, AdminFinanceController, AdminTiersController, AdminTiersIdController, AdminOverviewController, AdminPartnersPayoutsController, AdminPartnersRevenueController, AdminPlatformFinanceController, AdminR2StorageController, AdminFixStorageController, AdminStripeConnectController, AdminVideoProcessorController, AdminCloudinaryController, AdminMetricsB2bController,
+  ],
+  providers: [
+    AdminPartnersService, AdminPartnersActionsService, AdminReportsService, AdminReportsExportService, AdminReportsIdService, AdminReportsPublishService, AdminSettingsService, AdminUsersService, AdminUsersActionsService, AdminUsersSearchService,
+    AdminAffiliatesService, AdminAffiliatesReservedService, AdminAuditLogsService, AdminFinanceService, AdminTiersService, AdminTiersIdService, AdminOverviewService, AdminPartnersPayoutsService, AdminPartnersRevenueService, AdminPlatformFinanceService, AdminR2StorageService, AdminFixStorageService, AdminStripeConnectService, AdminVideoProcessorService, AdminCloudinaryService, AdminMetricsB2bService,
+  ],
+})
+export class AdminModule {}

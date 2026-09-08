@@ -1,0 +1,1181 @@
+// TrainLab (frontend) — Prisma Schema (COPIA espelhada do backend).
+// FONTE DA VERDADE: `apps/backend/prisma/schema.prisma` (dono das migrations).
+// Este arquivo existe para o NextAuth gerar o client padrao (`@prisma/client`
+// hoisted). FLUXO: editar no backend -> migrate no backend -> espelhar aqui.
+// Este app NUNCA cria migration.
+
+// Player.Action — Prisma Schema (rewrite limpo, 20/03/2026)
+// Guiado pelo business_rules.md
+// Princípio: User = identidade pura. Subscription, créditos, e roles em modelos dedicados.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// NEXTAUTH — AUTENTICAÇÃO (não alterar)
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+// Roles de negócio do usuário (múltiplos simultâneos permitidos)
+enum UserRole {
+  PENDING       // Novo usuário — ainda não escolheu papel
+  PROFESSIONAL       // Treinador SaaS (paga assinatura diretamente)
+  INDIVIDUAL       // Atleta independente (usa IA para si mesmo)
+  CLIENT       // Aluno de um treinador (aceitou convite)
+  PARTNER_B2B   // Treinador parceiro B2B (tem PartnerAccount)
+  AFFILIATE     // Afiliado — indica parceiros e ganha comissão sobre assinaturas
+}
+
+// Roles de acesso ao backoffice/sistema
+enum SystemRole {
+  USER       // Usuário comum
+  MODERATOR  // Gerencia esportes, aprovações
+  ADMIN      // Acesso total
+  PARTNER    // Dashboard financeiro do parceiro
+}
+
+// Status do plano de treino
+enum PlanStatus {
+  PENDING    // IA gerou — aguardando aprovação do treinador
+  APPROVED   // Treinador aprovou
+  REJECTED   // Treinador rejeitou
+  DELIVERED  // Entregue ao atleta
+  COMPLETED  // Todas as sessões concluídas
+  ARCHIVED   // Arquivado (terminal — sem mais transições)
+}
+
+// Indica qual segmento produziu o plano
+enum PlanSegment {
+  COACH               // Treinador gerou para aluno/atleta (tem trainerId)
+  ATHLETE_INDEPENDENT // Atleta gerou para si mesmo (sem treinador)
+}
+
+// Status de assinatura SaaS
+enum SubStatus {
+  inactive   // Sem assinatura ativa
+  active     // Ativa
+  trialing   // Em período trial
+  past_due   // Pagamento pendente
+  canceled   // Cancelada
+}
+
+// Status de agendamento
+enum AppointmentStatus {
+  PENDING    // Criado, aguardando confirmação do aluno
+  CONFIRMED  // Confirmado pelo aluno
+  CANCELED   // Cancelado
+  COMPLETED  // Realizado
+}
+
+// ============================================
+// USUÁRIO — apenas identidade e auth
+// ============================================
+
+model User {
+  id            String     @id @default(cuid())
+  email         String?    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  phone         String?    // Telefone/WhatsApp do treinador
+
+  // Roles de negócio (quem o usuário é na plataforma)
+  roles       UserRole[]   @default([PENDING])
+  systemRoles SystemRole[] @default([USER])
+
+  // Perfil público
+  username    String?  @unique
+  bio         String?  @db.Text
+  socialLinks Json?    // { instagram: "...", twitter: "..." }
+  // Default false por decisao de produto (D23 de docs/implementation-plans/epic-nest-perfil-publico.md):
+  // perfil publico e opt-in. Antes era true, o que combinado com username gerado
+  // automaticamente do nome tornava todo perfil descobrivel sem a pessoa escolher.
+  isPublic    Boolean  @default(false)
+
+  // Módulos de Acesso (Progressive Disclosure)
+  hasAthleteAccess Boolean @default(false)
+  hasCoachAccess   Boolean @default(false)
+
+  // Consentimento legal (LGPD / CDC)
+  termsAcceptedAt   DateTime? // Data de aceite dos Termos de Uso
+  termsVersion      String?   // Versão dos termos aceitos (ex: "2026-07-06")
+  privacyAcceptedAt DateTime? // Data de aceite da Política de Privacidade
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // NextAuth
+  accounts Account[]
+  sessions Session[]
+
+  // Assinatura SaaS e Créditos (separados)
+  subscription UserSubscription?
+  credits      UserCredits?
+
+  // Relações de negócio
+  trainers             TrainerAthlete[]      @relation("athlete")
+  athletes             TrainerAthlete[]      @relation("trainer")
+  athleteProfiles      AthleteProfile[]
+  trainingPlansCreated TrainingPlan[]        @relation("trainer")
+  trainingPlansAsAthl  TrainingPlan[]        @relation("athlete")
+  invitesSent          AthleteInvite[]
+  exercises            Exercise[]            @relation("trainer_exercises")
+  followers            Follows[]             @relation("following")
+  following            Follows[]             @relation("follower")
+  notifications        Notification[]        @relation("user_notifications")
+  studentsCreated      Student[]             @relation("trainer_students")
+  studentProfileLinks  Student[]             @relation("user_students")
+  studentNotes         StudentNote[]         @relation("trainer_notes")
+  partnerAccount       PartnerAccount?
+  affiliateAccount     AffiliateAccount?
+  partnerSubscriptions PartnerSubscription[] // assinaturas em planos de parceiros
+  creditTransactions   CreditTransaction[]
+  trainerAppointments   Appointment[]          @relation("TrainerAppointments")
+  athleteAppointments   Appointment[]          @relation("AthleteAppointments")
+  trainerScheduleConfig TrainerScheduleConfig?
+  trainerConversations  Conversation[]         @relation("TrainerConversations")
+  studentConversations  Conversation[]         @relation("StudentConversations")
+  sentMessages          Message[]              @relation("SentMessages")
+
+  @@index([email])
+  @@index([username])
+}
+
+// ============================================
+// ASSINATURA SaaS — separado do User
+// Segmentos SaaS: PROFESSIONAL e INDIVIDUAL
+// ============================================
+
+model UserSubscription {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Stripe
+  stripeCustomerId String?   @unique
+  stripeSubId      String?   @unique
+  status           SubStatus @default(inactive)
+  plan             String    @default("base") // ex: "base", "premium", "elite"
+  endsAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stripeCustomerId])
+  @@index([status])
+}
+
+// ============================================
+// CRÉDITOS — separado do User
+// Apenas PROFESSIONAL consome créditos (business_rules §17)
+// ============================================
+
+model UserCredits {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planCredits      Int       @default(0) // alocação do tier — reseta periodicamente
+  purchasedCredits Int       @default(0) // comprados — nunca resetam
+  lastResetAt      DateTime?
+
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// RELAÇÃO TREINADOR-ATLETA (segmento SaaS)
+// ============================================
+
+model TrainerAthlete {
+  id        String @id @default(cuid())
+  trainerId String
+  athleteId String
+
+  trainer User @relation("trainer", fields: [trainerId], references: [id], onDelete: Cascade)
+  athlete User @relation("athlete", fields: [athleteId], references: [id], onDelete: Cascade)
+
+  status    String   @default("active") // active | inactive | pending
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([trainerId, athleteId])
+  @@index([trainerId])
+  @@index([athleteId])
+}
+
+// ============================================
+// GAMIFICAÇÃO
+// ============================================
+
+model Follows {
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId  String
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  followingId String
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+// ============================================
+// ALUNOS VIRTUAIS (segmento B2B)
+// Student registration virtual antes do convite ser aceito.
+// Após aceite: Student.userId aponta para o User real.
+// ============================================
+
+model Student {
+  id        String  @id @default(cuid())
+  name      String
+  email     String?
+  trainerId String
+  trainer   User    @relation("trainer_students", fields: [trainerId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation("user_students", fields: [userId], references: [id], onDelete: SetNull)
+
+  athleteProfiles AthleteProfile[]
+  trainingPlans   TrainingPlan[]
+  notes           StudentNote[] @relation("student_notes")
+  appointments    Appointment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trainerId])
+  @@index([userId])
+}
+
+// ============================================
+// PERFIL DE ATLETA (Anamnese)
+// Pode pertencer a um User real (userId) ou a um Student virtual (studentId).
+// @@unique garante 1 perfil por esporte por pessoa.
+// ============================================
+
+model AthleteProfile {
+  id String @id @default(cuid())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  sportId  String
+  sport    Sport  @relation(fields: [sportId], references: [id])
+  position String? // ex: "Atacante", "Goleiro"
+
+  // Nível e experiência
+  technicalLevel String? // iniciante | intermediario | avancado | profissional
+  yearsPlaying   Int?
+  dominantFoot   String? // direito | esquerdo | ambidestro
+  teams          Team[]
+
+  // Físico
+  dateOfBirth DateTime?
+  height      Float?     // cm (50–300)
+  weight      Float?     // kg (20–500)
+
+  // Treino
+  trainingDaysPerWeek Int?
+  trainingHoursPerDay Float?
+  trainingFocus       String[] // físico, técnico, tático, psicológico, recuperação
+  goals               String?  @db.Text
+
+  // Histórico clínico
+  injuryHistory    String?  @db.Text
+  currentInjuries  String?  @db.Text
+  hasHealthIssues  Boolean  @default(false)
+  healthIssuesDesc String?  @db.Text
+  takesMedication  Boolean  @default(false)
+  medicationDesc   String?  @db.Text
+  acceptedTerms    Boolean  @default(false)
+
+  // Desenvolvimento
+  strengths  String? @db.Text
+  weaknesses String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, sportId])
+  @@unique([studentId, sportId])
+  @@index([userId])
+  @@index([sportId])
+}
+
+// ============================================
+// ESPORTES
+// ============================================
+
+model Sport {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  positions String[] @default([])
+
+  profiles AthleteProfile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// ============================================
+// TIMES / CLUBES
+// ============================================
+
+model Team {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  athleteProfiles AthleteProfile[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([name])
+}
+
+// ============================================
+// CONVITES DE ATLETA
+// ============================================
+
+model AthleteInvite {
+  id        String   @id @default(cuid())
+  email     String
+  trainerId String
+  trainer   User     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  studentId String?
+  token     String   @unique @default(cuid())
+  accepted  Boolean  @default(false)
+
+  acceptedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt     // necessário para cooldown anti-spam
+
+  @@unique([email, trainerId])
+  @@index([token])
+  @@index([trainerId])
+  @@index([studentId])
+}
+
+// ============================================
+// PLANOS DE TREINO
+// ============================================
+
+model TrainingPlan {
+  id String @id @default(cuid())
+
+  // Segmento que originou o plano
+  segment PlanSegment @default(COACH)
+
+  // Treinador (null apenas no segmento ATHLETE_INDEPENDENT)
+  trainerId String?
+  trainer   User?   @relation("trainer", fields: [trainerId], references: [id], onDelete: SetNull)
+
+  // Destino: atleta independente (User) OU aluno virtual (Student)
+  athleteId String?
+  athlete   User?    @relation("athlete", fields: [athleteId], references: [id], onDelete: Cascade)
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  // Conteúdo
+  title        String
+  aiSuggestion String  @db.Text
+  finalPlan    String? @db.Text
+  trainerNotes String? @db.Text
+
+  // Workflow
+  status   PlanStatus @default(PENDING)
+  duration Int        @default(30) // dias
+
+  // Arquivo PDF
+  pdfUrl         String?
+  pdfGeneratedAt DateTime?
+
+  // Período do plano
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Geração
+  isManual Boolean @default(false) // true = criado manualmente (sem IA)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  approvedAt  DateTime?
+  deliveredAt DateTime?
+
+  trainingSessions TrainingSession[]
+  appointments     Appointment[]
+
+  @@index([athleteId])
+  @@index([studentId])
+  @@index([trainerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================
+// SESSÕES DE TREINO
+// ============================================
+
+model TrainingSession {
+  id     String       @id @default(cuid())
+  planId String
+  plan   TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  day         Int
+  title       String
+  description String?  @db.Text                // nullable — nem toda sessão tem descrição
+  exercises   String   @db.Text @default("[]") // JSON array de WorkoutSets
+  duration    Int      @default(0)             // minutos (0 = não especificado)
+  intensity   String   @default("media")       // baixa | media | alta
+
+  completed             Boolean   @default(false)
+  completedAt           DateTime?
+  athleteFeedback       String?   @db.Text
+  athleteFeedbackRating Int?      // 1–5
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
+}
+
+// ============================================
+// BIBLIOTECA DE EXERCÍCIOS
+// ============================================
+
+model Exercise {
+  id               String  @id @default(cuid())
+  name             String
+  description      String  @db.Text
+  aiSummary        String? @db.Text // resumo gerado por IA — invisível ao usuário, usado nos prompts de geração de treino
+  category         String  // físico | técnico | tático | recuperação | aquecimento
+  difficulty       String  // iniciante | intermediário | avançado | profissional
+
+  videoUrl      String?
+  videoPublicId String?
+
+  hlsProcessed         Boolean @default(false)
+  processingProgress   Int     @default(0)
+  videoStorageProvider String  @default("r2") // "r2" | "cloudinary"
+  originalVideoKey     String?
+
+  trainerId String?
+  trainer   User?   @relation("trainer_exercises", fields: [trainerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trainerId])
+  @@index([category])
+  @@index([hlsProcessed])
+}
+
+// ============================================
+// ANOTAÇÕES DO TREINADOR (RAG — contexto IA)
+// ============================================
+
+model StudentNote {
+  id        String  @id @default(cuid())
+  studentId String
+  student   Student @relation("student_notes", fields: [studentId], references: [id], onDelete: Cascade)
+  trainerId String
+  trainer   User    @relation("trainer_notes", fields: [trainerId], references: [id], onDelete: Cascade)
+  content   String  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([trainerId])
+}
+
+// ============================================
+// NOTIFICAÇÕES IN-APP
+// ============================================
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("user_notifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  type     String  // STUDENT_INVITE | PLAN_APPROVED | PLAN_REJECTED | PLAN_DELIVERED | PLAN_COMPLETED | PLAN_FEEDBACK | SYSTEM
+  title    String
+  message  String  @db.Text
+  link     String?
+  isRead   Boolean @default(false)
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+}
+
+// ============================================
+// ADMIN: TIERS SaaS (Treinador e Atleta independente)
+// ============================================
+
+model SaaSTier {
+  id            String   @id @default(cuid())
+  name          String
+  price         Float
+  stripePriceId String
+  stripePriceIdUsd String? // Price ID USD para internacionalização
+  description   String   @db.Text
+  features      String[]
+  targetRole    String   @default("PROFESSIONAL") // "PROFESSIONAL" | "INDIVIDUAL" | "BOTH"
+  isPopular     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+
+  maxAthletes      Int? // null = ilimitado
+  maxPlansPerMonth Int @default(10)
+
+  creditsPerPeriod  Int?
+  creditResetPeriod String? // "monthly" | "weekly"
+
+  // Resoluções de vídeo permitidas para este tier (vazio = padrão [720, 1080])
+  videoQualityHeights Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// ============================================
+// CONFIGURAÇÕES GLOBAIS (Feature Flags)
+// ============================================
+
+model SystemSettings {
+  id String @id @default(cuid())
+
+  // Toggles de módulos
+  moduleAthleteEnabled    Boolean @default(false)
+  moduleCoachEnabled      Boolean @default(false)
+  modulePartnerB2BEnabled Boolean @default(true)
+  moduleAffiliateEnabled  Boolean @default(true)
+
+  // Regras de negócio
+  autoApprovePartners           Boolean @default(true)
+  autoApproveTierChange         Boolean @default(true)
+  defaultCommissionRate         Float   @default(0.15)
+  allowMultipleTrainersPerSport Boolean @default(false)
+  enableVideoHoverPreview       Boolean @default(true)
+  videoHoverType                String  @default("TEASER") // "TEASER" | "FULL" | "THUMBNAIL"
+  enableB2BTestMode             Boolean @default(false)
+  storageProvider               String  @default("r2")    // "r2" | "cloudinary"
+
+  // IA
+  aiProvider  String @default("groq")            // "groq" | "gemini"
+  geminiModel String @default("gemini-2.0-flash")
+
+  // Créditos
+  enableCreditSystem Boolean @default(false)
+  creditCostPlanGen  Int     @default(10)
+  creditCostAiVideo  Int     @default(50)
+
+  // UI
+  uiTheme String @default("light") // "light" | "dark-blue"
+
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// B2B PARTNER
+// ============================================
+
+model PartnerAccount {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Consentimento legal
+  contractAcceptedAt DateTime? // Data de aceite do Contrato de Parceiro
+
+  // Candidatura
+  motivation      String?   @db.Text
+  status          String    @default("pending") // pending | approved | rejected | suspended
+  rejectionReason String?   @db.Text
+  approvedAt      DateTime?
+  approvedById    String?
+
+  // Stripe Connect
+  stripeAccountId     String? @unique
+  stripeAccountStatus String  @default("not_started") // not_started | pending | active | restricted
+  payoutsEnabled      Boolean @default(false)
+  chargesEnabled      Boolean @default(false)
+
+  // Tier e comissão
+  partnerTier  String      @default("starter")
+  tierId       String?
+  tier         PartnerTier? @relation("tier_accounts", fields: [tierId], references: [id])
+  commissionRate Float      @default(0.50)
+  payoutSchedule String     @default("weekly")
+  payoutsFrozen  Boolean    @default(false)
+
+  // Overrides financeiros
+  customCommissionRate Float?
+  minimumPayoutAmount  Int    @default(5000) // centavos
+  bonusThreshold       Int?
+  bonusRateDrop        Float?
+  allowTestMode        Boolean @default(false)
+
+  // Afiliação
+  affiliateAccountId String?
+  affiliatedBy       AffiliateAccount? @relation("affiliate_partners", fields: [affiliateAccountId], references: [id], onDelete: SetNull)
+
+  // Earnings de afiliados referentes a este parceiro
+  affiliateEarnings AffiliateEarning[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers        PartnerOffer[]
+  tierRequests  PartnerTierRequest[]
+  subscriptions PartnerSubscription[]
+
+  @@index([status])
+  @@index([stripeAccountId])
+}
+
+model PartnerTier {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String? @db.Text
+
+  commissionRate Float   @default(0.50)
+  minPrice       Float   @default(0.0)
+  maxAthletes    Int?    // null = ilimitado
+  maxPlansPerMonth Int?
+
+  allowFlexibleDistribution Boolean @default(false)
+  allowHourlyRate           Boolean @default(false)
+  hourlyRatePolicy          String  @default("base_only") // "base_only" | "full"
+
+  // Comissão de afiliado (%) sobre o valor base da assinatura
+  affiliateCommissionRate Float @default(0.01) // 1%
+
+  payoutSchedule  String @default("monthly")
+  payoutDelayDays Int    @default(7)
+
+  isActive  Boolean @default(true)
+  isDefault Boolean @default(false) // Tier entregue automaticamente a novos parceiros no cadastro
+
+  // Créditos por tier
+  creditsPerPeriod  Int?
+  creditResetPeriod String? // "monthly" | "weekly"
+
+  // Valor cobrado do treinador pelo tier (0 = gratuito)
+  price    Float @default(0)
+  priceUsd Float? // Preço em USD para parceiros internacionais
+
+  // Resoluções de vídeo permitidas para este tier (vazio = padrão [720, 1080])
+  videoQualityHeights Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partnerAccounts PartnerAccount[]    @relation("tier_accounts")
+  tierRequests    PartnerTierRequest[]
+}
+
+model PartnerTierRequest {
+  id        String         @id @default(cuid())
+  partnerId String
+  partner   PartnerAccount @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  fromTierId String?
+  toTierId   String
+  toTier     PartnerTier @relation(fields: [toTierId], references: [id])
+
+  status       String    @default("pending") // pending | approved | rejected | auto_approved
+  note         String?   @db.Text
+  reviewedAt   DateTime?
+  reviewedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([status])
+}
+
+model PartnerOffer {
+  id        String         @id @default(cuid())
+  partnerId String
+  partner   PartnerAccount @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String  @db.Text
+  price           Float                   // valor BASE (sem hourlyRate)
+  hourlyRate      Float?                  // taxa de serviço — 100% do parceiro
+  hourlyLabel     String? @db.VarChar(60) // ex: "Taxa de serviço"
+  stripePriceId   String?
+  stripeProductId String?
+  isActive        Boolean @default(true)
+
+  // Versionamento de Preço (Opção A)
+  // Ao reajustar preço com assinantes ativos, a oferta atual é arquivada e uma nova é criada.
+  // Assinantes existentes ficam na oferta arquivada; novos assinantes vão para a nova.
+  archivedAt     DateTime?    // preenchido quando a oferta é substituída por uma nova versão
+  supersededById String?      // aponta para a nova oferta que substituiu esta
+  supersededBy   PartnerOffer?  @relation("offer_versions", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes     PartnerOffer[] @relation("offer_versions")
+
+  subscriptions PartnerSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([isActive])
+  @@index([archivedAt])
+}
+
+model PartnerSubscription {
+  id      String       @id @default(cuid())
+  offerId String
+  offer   PartnerOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  // A79/D78 — denormalizado de `offer.partnerId` de propósito.
+  //
+  // O legado impedia assinatura duplicada (mesmo aluno + mesmo treinador) com
+  // check-then-act: `findFirst` por assinatura ativa, e só então `create`. Sem
+  // trava no banco, dois cliques simultâneos passam os dois pela consulta antes
+  // de qualquer um escrever — medido contra Postgres real: 3 conexões
+  // concorrentes, 3 assinaturas criadas para o mesmo par aluno/treinador (A78).
+  //
+  // O banco só pode vigiar uma combinação de colunas que ele CONSEGUE VER na
+  // mesma linha. `partnerId` só existia via `offer.partnerId`, então a regra
+  // "único aluno+treinador entre os ativos" não tinha onde morar.
+  //
+  // Copiar é seguro aqui porque `PartnerOffer.partnerId` é escrito só na
+  // criação — nenhuma rota do produto move oferta de um parceiro para outro.
+  // Sem essa reescrita nunca acontecendo, a cópia não tem como desatualizar.
+  partnerId String?
+  partner   PartnerAccount? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email  String  // sempre presente — suporta guest checkout
+
+  stripeSubscriptionId String? @unique
+  stripeCustomerId     String?
+  status               String // active | canceled | past_due | trialing | canceling
+  pendingOfferId       String? // downgrade agendado: offerId a ativar ao fim do período
+
+  // Versionamento de Preço (Opção A)
+  // Snapshot do preço total (price + hourlyRate) no momento da assinatura.
+  // Garante que reajustes futuros do treinador não afetam o display do aluno.
+  priceAtSubscription Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([offerId])
+  @@index([userId])
+  @@index([partnerId])
+  @@index([status])
+  @@index([stripeSubscriptionId])
+}
+
+// ============================================
+// AFILIADOS
+// ============================================
+
+model AffiliateAccount {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Consentimento legal
+  termsAcceptedAt DateTime? // Data de aceite dos Termos de Afiliado
+
+  referralCode String @unique // código único de indicação (ex: "afiliado-josiel")
+
+  // Saldos
+  pendingBalance  Int @default(0) // centavos — ganhos aguardando período de carência
+  availableBalance Int @default(0) // centavos — já liberados para saque
+
+  status String @default("approved") // approved | suspended
+
+  // Comissão personalizada (override da taxa do tier)
+  customCommissionRate Float?
+
+  // Stripe Connect
+  stripeAccountId     String? @unique
+  stripeAccountStatus String  @default("not_started") // not_started | pending | active | restricted
+  payoutsEnabled      Boolean @default(false)
+  chargesEnabled      Boolean @default(false)
+
+  // Parceiros indicados por este afiliado
+  referredPartners PartnerAccount[] @relation("affiliate_partners")
+
+  // Histórico de ganhos
+  earnings AffiliateEarning[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([referralCode])
+  @@index([status])
+  @@index([stripeAccountId])
+}
+
+model AffiliateEarning {
+  id        String           @id @default(cuid())
+  affiliateId String
+  affiliate AffiliateAccount @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  partnerId String
+  partner   PartnerAccount @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  // Valores em centavos
+  grossAmount  Int // total pago pelo aluno (price + hourlyRate)
+  baseAmount   Int // valor base da oferta (price) — sobre o qual a comissão incide
+  earnedAmount Int // comissão calculada
+
+  commissionRate Float // taxa aplicada no momento do cálculo (para auditoria)
+
+  status String @default("pending") // pending | flushing | available | paid | cancelled
+
+  // Referência à origem do pagamento
+  subscriptionId String?
+  invoiceId      String? // idempotência — Stripe invoice ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  paidAt    DateTime?
+
+  @@index([affiliateId])
+  @@index([status])
+  @@index([invoiceId])
+  @@unique([invoiceId, affiliateId]) // Idempotência: uma comissão por invoice por afiliado
+}
+
+// ============================================
+// FINANCEIRO (Admin)
+// ============================================
+
+model PlatformFinanceSettings {
+  id                    String   @id @default("singleton")
+  stripePercentFee      Float    @default(0.0399)
+  stripeFixedFeeInCents Int      @default(39)
+  usdToBrlRate          Float    @default(5.85)
+  distributionRules     Json     @default("[]")
+  updatedAt             DateTime @updatedAt
+}
+
+model MonthlyReport {
+  id                  String   @id @default(cuid())
+  period              String   @unique // "2025-03"
+  status              String   @default("draft") // draft | published
+  grossRevenue        Float    @default(0)
+  activeSubscriptions Int      @default(0)
+  stripeFeePercent    Float    @default(0)
+  stripeFeeFixed      Float    @default(0)
+  partnerCommissions  Float    @default(0)
+  totalExpenses       Float    @default(0)
+  netRevenue          Float    @default(0)
+
+  expenses      ReportExpense[]
+  distributions ReportDistribution[]
+
+  generatedAt DateTime  @default(now())
+  publishedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([period])
+  @@index([status])
+}
+
+model ReportExpense {
+  id          String        @id @default(cuid())
+  reportId    String
+  report      MonthlyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  category    String        // "api_llm" | "storage" | "accounting" | "freelancer" | "ads" | "other"
+  description String
+  amount      Float
+
+  @@index([reportId])
+}
+
+model ReportDistribution {
+  id         String        @id @default(cuid())
+  reportId   String
+  report     MonthlyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  label      String
+  percentage Float
+  amount     Float
+
+  @@index([reportId])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  actorName    String
+  action       String
+  entity       String
+  entityId     String?
+  details      Json?
+  performedAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity])
+  @@index([performedAt])
+}
+
+model CloudinarySnapshot {
+  id               String   @id @default(cuid())
+  year             Int
+  month            Int
+  creditsUsed      Float
+  creditsLimit     Float
+  breakdown        Json
+  estimatedCostUSD Float    @default(0)
+  capturedAt       DateTime @default(now())
+
+  @@unique([year, month])
+  @@index([year, month])
+}
+
+// ============================================
+// SISTEMA DE CRÉDITOS
+// ============================================
+
+model CreditPackage {
+  id            String  @id @default(cuid())
+  name          String
+  credits       Int
+  price         Float   // Preço em BRL
+  priceUsd      Float?  // Preço em USD (opcional — para internacionalização)
+  stripePriceId String?
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model CreditTransaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type         String  // GRANT | PURCHASE | SPEND | RESET | REFUND
+  amount       Int     // positivo = ganho, negativo = gasto
+  balanceAfter Int
+  bucket       String  @default("plan") // "plan" | "purchased"
+  feature      String? // "PLAN_GEN" | "AI_VIDEO"
+  description  String?
+  grantedById  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================
+// IDEMPOTÊNCIA — Webhooks Stripe
+// ============================================
+
+model ProcessedWebhookEvent {
+  eventId   String   @id
+  createdAt DateTime @default(now())
+
+  // D75 — a linha passa a ser RESERVA, não recibo.
+  //
+  // O legado gravava aqui só depois de o handler terminar, e consultava antes de
+  // começar: check-then-act. Duas entregas simultâneas do mesmo evento rodavam o
+  // handler DUAS vezes antes de a segunda levar violação de chave (A74).
+  //
+  // Agora o INSERT vem primeiro e a chave primária vira trava. `claimedAt` existe
+  // para o caso do processo que morre no meio: sem ele, a reserva trancaria o
+  // evento para sempre, e o Stripe desiste depois de algumas tentativas.
+  status    String   @default("processando") // processando | concluido
+  claimedAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status, claimedAt])
+}
+
+// ============================================
+// AGENDAMENTOS
+// ============================================
+
+model Appointment {
+  id        String @id @default(cuid())
+  trainerId String
+  trainer   User   @relation("TrainerAppointments", fields: [trainerId], references: [id], onDelete: Cascade)
+
+  studentId String?  // Student record (pode ser virtual)
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  athleteId String?  // User com role INDIVIDUAL
+  athlete   User?    @relation("AthleteAppointments", fields: [athleteId], references: [id], onDelete: SetNull)
+
+  title           String            @db.VarChar(150)
+  description     String?           @db.Text
+  scheduledAt     DateTime
+  durationMinutes Int               @default(60)
+  location        String?           @db.VarChar(200)
+  googleMeetLink  String?           @db.VarChar(500)
+  googleEventId   String?           @db.VarChar(200)
+  // Vídeo 1:1 próprio (fatia 37) — aditivo, Meet continua intacto
+  videoProvider   String?           @db.VarChar(20)
+  videoRoomName   String?           @db.VarChar(100)
+  videoJoinUrl    String?           @db.VarChar(500)
+  status          AppointmentStatus @default(PENDING)
+  trainerNotes    String?           @db.Text
+  cancelReason    String?           @db.VarChar(500)
+
+  // Link mágico de confirmação
+  confirmToken     String?   @unique  // UUID gerado pelo treinador
+  confirmExpiresAt DateTime?          // = scheduledAt (expira na hora do agendamento)
+  confirmedAt      DateTime?          // timestamp da confirmação pelo aluno
+
+  // Link opcional a um plano de treino
+  trainingPlanId String?
+  trainingPlan   TrainingPlan? @relation(fields: [trainingPlanId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trainerId])
+  @@index([studentId])
+  @@index([athleteId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+// ============================================
+// CONFIGURAÇÃO DE EXPEDIENTE DO TREINADOR
+// ============================================
+
+model TrainerScheduleConfig {
+  id        String @id @default(cuid())
+  trainerId String @unique
+  trainer   User   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  workStartHour Int   @default(7)            // hora de inicio do expediente (0-23)
+  workEndHour   Int   @default(22)           // hora de fim do expediente (0-23)
+  workDays      Int[] @default([1,2,3,4,5])  // 0=Dom, 1=Seg, ..., 6=Sab
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  blockedSlots BlockedSlot[]
+
+  @@index([trainerId])
+}
+
+model BlockedSlot {
+  id       String                @id @default(cuid())
+  configId String
+  config   TrainerScheduleConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  label       String?  // ex: "Almoço", "Reunião"
+  startTime   DateTime // data+hora de inicio do bloqueio
+  endTime     DateTime // data+hora de fim do bloqueio
+  isRecurring Boolean  @default(false) // se true, repete toda semana naquele dia/hora
+
+  createdAt DateTime @default(now())
+
+  @@index([configId])
+  @@index([startTime])
+}
+
+// ============================================
+// CHAT — Mensagens internas
+// ============================================
+
+model Conversation {
+  id            String    @id @default(cuid())
+  trainerId     String
+  studentId     String
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  trainer  User      @relation("TrainerConversations", fields: [trainerId], references: [id], onDelete: Cascade)
+  student  User      @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([trainerId, studentId])
+  @@index([trainerId])
+  @@index([studentId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String   @db.Text
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}

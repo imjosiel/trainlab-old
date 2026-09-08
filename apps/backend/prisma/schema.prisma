@@ -1,9 +1,8 @@
-// ATENCAO: copia do schema de apps/web/prisma/schema.prisma.
-// A fonte da verdade e la, e o historico de migrations vive SO la (D10 de
-// docs/implementation-plans/epic-nest-sports.md). Este arquivo existe para o
-// backend gerar seu proprio client com output isolado. Ao mudar o schema:
-// editar em apps/web -> migrate la -> espelhar aqui reinjetando o bloco output.
-// Este app NUNCA cria migration.
+// ATENCAO: fonte da verdade do schema e este arquivo (apps/backend).
+// O historico de migrations vive em apps/backend/prisma/migrations.
+// apps/frontend/prisma/schema.prisma e copia espelhada (sem bloco output)
+// para o NextAuth gerar o client padrao. Ao mudar o schema:
+// editar aqui -> migrate aqui -> espelhar em apps/frontend.
 
 // Player.Action — Prisma Schema (rewrite limpo, 20/03/2026)
 // Guiado pelo business_rules.md
@@ -689,8 +688,9 @@ model PartnerAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  offers       PartnerOffer[]
-  tierRequests PartnerTierRequest[]
+  offers        PartnerOffer[]
+  tierRequests  PartnerTierRequest[]
+  subscriptions PartnerSubscription[]
 
   @@index([status])
   @@index([stripeAccountId])
@@ -796,6 +796,24 @@ model PartnerSubscription {
   offerId String
   offer   PartnerOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
+  // A79/D78 — denormalizado de `offer.partnerId` de propósito.
+  //
+  // O legado impedia assinatura duplicada (mesmo aluno + mesmo treinador) com
+  // check-then-act: `findFirst` por assinatura ativa, e só então `create`. Sem
+  // trava no banco, dois cliques simultâneos passam os dois pela consulta antes
+  // de qualquer um escrever — medido contra Postgres real: 3 conexões
+  // concorrentes, 3 assinaturas criadas para o mesmo par aluno/treinador (A78).
+  //
+  // O banco só pode vigiar uma combinação de colunas que ele CONSEGUE VER na
+  // mesma linha. `partnerId` só existia via `offer.partnerId`, então a regra
+  // "único aluno+treinador entre os ativos" não tinha onde morar.
+  //
+  // Copiar é seguro aqui porque `PartnerOffer.partnerId` é escrito só na
+  // criação — nenhuma rota do produto move oferta de um parceiro para outro.
+  // Sem essa reescrita nunca acontecendo, a cópia não tem como desatualizar.
+  partnerId String?
+  partner   PartnerAccount? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   email  String  // sempre presente — suporta guest checkout
@@ -815,6 +833,7 @@ model PartnerSubscription {
 
   @@index([offerId])
   @@index([userId])
+  @@index([partnerId])
   @@index([status])
   @@index([stripeSubscriptionId])
 }
@@ -1027,7 +1046,20 @@ model ProcessedWebhookEvent {
   eventId   String   @id
   createdAt DateTime @default(now())
 
+  // D75 — a linha passa a ser RESERVA, não recibo.
+  //
+  // O legado gravava aqui só depois de o handler terminar, e consultava antes de
+  // começar: check-then-act. Duas entregas simultâneas do mesmo evento rodavam o
+  // handler DUAS vezes antes de a segunda levar violação de chave (A74).
+  //
+  // Agora o INSERT vem primeiro e a chave primária vira trava. `claimedAt` existe
+  // para o caso do processo que morre no meio: sem ele, a reserva trancaria o
+  // evento para sempre, e o Stripe desiste depois de algumas tentativas.
+  status    String   @default("processando") // processando | concluido
+  claimedAt DateTime @default(now())
+
   @@index([createdAt])
+  @@index([status, claimedAt])
 }
 
 // ============================================
@@ -1051,6 +1083,10 @@ model Appointment {
   location        String?           @db.VarChar(200)
   googleMeetLink  String?           @db.VarChar(500)
   googleEventId   String?           @db.VarChar(200)
+  // Vídeo 1:1 próprio (fatia 37) — aditivo, Meet continua intacto
+  videoProvider   String?           @db.VarChar(20)
+  videoRoomName   String?           @db.VarChar(100)
+  videoJoinUrl    String?           @db.VarChar(500)
   status          AppointmentStatus @default(PENDING)
   trainerNotes    String?           @db.Text
   cancelReason    String?           @db.VarChar(500)

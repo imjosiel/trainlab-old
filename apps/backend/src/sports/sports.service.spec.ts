@@ -137,7 +137,8 @@ describe('SportsService', () => {
       ['sem slug', { name: 'Novo' }],
       ['name vazio', { name: '', slug: 'novo' }],
     ])('rejeita %s com 400', async (_label, input) => {
-      await expect(service.create(input)).rejects.toThrow(BadRequestException);
+      // Corpo inválido de propósito (dupla barreira D104).
+      await expect(service.create(input as never)).rejects.toThrow(BadRequestException);
       expect(prisma.sport.create).not.toHaveBeenCalled();
     });
 

@@ -14,6 +14,7 @@ import { CurrentUser } from '@/auth/current-user.decorator';
 import { Public } from '@/auth/public.decorator';
 import { SessionPayload } from '@/auth/session-payload';
 import { UsersService } from './users.service';
+import { UpdateOwnProfileBody } from './dtos';
 
 @ApiTags('users')
 @Controller('users')
@@ -129,7 +130,7 @@ export class UsersController {
   })
   @ApiBadRequestResponse({ schema: { example: { error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' } } })
   @ApiConflictResponse({ schema: { example: { error: 'Este @username já está em uso por outra pessoa.' } } })
-  updateOwnProfile(@CurrentUser() user: SessionPayload, @Body() body: Record<string, unknown>) {
+  updateOwnProfile(@CurrentUser() user: SessionPayload, @Body() body: UpdateOwnProfileBody) {
     return this.users.updateOwnProfile(user, body);
   }
 }

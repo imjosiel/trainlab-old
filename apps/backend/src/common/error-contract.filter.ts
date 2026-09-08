@@ -25,6 +25,9 @@ const DEFAULT_BY_STATUS: Record<number, string> = {
   [HttpStatus.FORBIDDEN]: 'Acesso negado',
   [HttpStatus.NOT_FOUND]: 'Recurso não encontrado',
   [HttpStatus.CONFLICT]: 'Conflito',
+  // Fatia 27 (SDD: Info Disclosure) — 429 do throttler sai em PT-BR, não o
+  // "Too Many Requests" padrão do Nest.
+  [HttpStatus.TOO_MANY_REQUESTS]: 'Muitas requisições. Tente novamente em alguns instantes.',
 };
 
 /**
@@ -37,6 +40,8 @@ const GENERIC_PHRASES = new Set([
   'Forbidden',
   'Not Found',
   'Conflict',
+  'Too Many Requests',
+  'ThrottlerException: Too Many Requests',
   'Internal Server Error',
 ]);
 
@@ -93,7 +98,14 @@ export class ErrorContractFilter implements ExceptionFilter {
       }
     }
 
-    if (typeof payload === 'string') return { error: payload };
+    if (typeof payload === 'string') {
+      // ThrottlerException chega como string ("ThrottlerException: Too Many
+      // Requests") — traduz para o contrato em PT-BR em vez de repassar.
+      if (isGeneric(payload) || payload.includes('Too Many Requests')) {
+        return { error: DEFAULT_BY_STATUS[status] ?? 'Erro interno' };
+      }
+      return { error: payload };
+    }
 
     return { error: DEFAULT_BY_STATUS[status] ?? 'Erro interno' };
   }

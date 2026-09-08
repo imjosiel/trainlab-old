@@ -7,19 +7,7 @@ import {
 
 import { PrismaService } from '@/prisma/prisma.service';
 import { DEFAULT_SPORTS, POSITIONS_BY_SLUG } from './default-sports';
-
-export interface CreateSportInput {
-  name?: string;
-  slug?: string;
-  positions?: string[];
-}
-
-export interface UpdateSportInput {
-  name?: string;
-  slug?: string;
-  isActive?: boolean;
-  positions?: string[];
-}
+import { CreateSportInput, UpdateSportInput } from './dtos';
 
 /**
  * Limites de slug divergem entre criar e editar no legado (achado A4):
@@ -156,8 +144,10 @@ export class SportsService {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.slug !== undefined && { slug: input.slug }),
-        ...(input.isActive !== undefined && { isActive: input.isActive }),
-        ...(input.positions !== undefined && { positions: input.positions }),
+        ...(input.isActive !== undefined && { isActive: Boolean(input.isActive) }),
+        ...(input.positions !== undefined && {
+          positions: Array.isArray(input.positions) ? input.positions : [],
+        }),
       },
     });
   }
